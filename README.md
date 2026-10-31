@@ -3,12 +3,12 @@
 **更优雅的菜单栏开关。** macOS 27 上的菜单栏折叠工具：一个开关，把不常用的图标收起来，需要时再放出来。
 
 <p align="center">
-  <img src="website/assets/hero.jpg" alt="展开与折叠对比" width="820">
+  <img src="docs/assets/hero.jpg" alt="展开与折叠对比" width="820">
 </p>
 
 <p align="center">
   <a href="../../releases/latest">下载</a> ·
-  <a href="website/index.html">官网</a> ·
+  <a href="docs/index.html">官网</a> ·
   <a href="#编译">编译</a> ·
   <a href="#原理">原理</a>
 </p>
@@ -23,8 +23,8 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 决定哪些图标被收起的方式和系统一致：按住 `⌘` 拖动图标到开关左边即可，顺序由 macOS 自己记住。
 
 <p align="center">
-  <img src="website/assets/state-expanded.png" alt="展开" width="420">
-  <img src="website/assets/state-collapsed.png" alt="折叠" width="420">
+  <img src="docs/assets/state-expanded.png" alt="展开" width="420">
+  <img src="docs/assets/state-collapsed.png" alt="折叠" width="420">
 </p>
 
 ## 特性
