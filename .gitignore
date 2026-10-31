@@ -1,0 +1,11 @@
+# 构建产物
+build/
+BlankTop.app/
+dist/
+
+# 编译中间文件
+*.o
+*.dSYM/
+
+# 系统
+.DS_Store

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>留白 BlankTop · 更优雅的菜单栏开关</title>
+<meta name="description" content="macOS 27 的菜单栏折叠工具：开关左边的图标收起来，右边保持可见。开源、轻量、无后台驻留。">
+<meta property="og:title" content="留白 BlankTop · 更优雅的菜单栏开关">
+<meta property="og:description" content="macOS 27 的菜单栏折叠工具。开源、轻量、无后台驻留。">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" href="assets/icon.png">
+<style>
+  :root {
+    --navy-900: #0d1226;
+    --navy-800: #141b36;
+    --navy-700: #1e2750;
+    --navy-600: #2b3766;
+    --green: #45c34f;
+    --green-soft: #6fd45f;
+    --text: #eef1fa;
+    --muted: #9aa3c0;
+    --line: rgba(255,255,255,.10);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--navy-900);
+    color: var(--text);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--green-soft); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { width: min(1080px, 92vw); margin: 0 auto; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0; border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .3px; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .nav { display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+  .nav a { color: var(--muted); }
+
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(38px, 6vw, 64px);
+    line-height: 1.15; margin: 0 0 16px; letter-spacing: -1px;
+  }
+  .hero .tag {
+    font-size: clamp(17px, 2.4vw, 22px); color: var(--muted); margin: 0 auto 34px;
+    max-width: 620px;
+  }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 22px; border-radius: 12px; font-weight: 600; font-size: 15px;
+    border: 1px solid transparent; transition: .15s;
+  }
+  .btn-primary { background: var(--green); color: #06240b; }
+  .btn-primary:hover { background: var(--green-soft); text-decoration: none; }
+  .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(255,255,255,.03); }
+  .btn-ghost:hover { background: rgba(255,255,255,.07); text-decoration: none; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); }
+
+  .shot { margin: 26px 0 0; }
+  .shot img { width: 100%; display: block; border-radius: 20px; }
+  .caption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -.3px; }
+  .sub { color: var(--muted); margin: 0 0 32px; font-size: 15px; }
+
+  .states { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .state {
+    border: 1px solid var(--line); border-radius: 18px; padding: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+  }
+  .state img { width: 100%; display: block; }
+  .state h3 { margin: 16px 0 4px; font-size: 16px; }
+  .state p { margin: 0; color: var(--muted); font-size: 14px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+  .dot.on { background: var(--green); }
+  .dot.off { background: #9ba0ae; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .card {
+    border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+  }
+  .card h3 { margin: 0 0 8px; font-size: 15px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .num { font-size: 22px; font-weight: 700; color: var(--green-soft); display: block; margin-bottom: 6px; }
+
+  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  ol.steps li {
+    counter-increment: step; position: relative; padding-left: 46px;
+    color: var(--muted); font-size: 15px;
+  }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 600;
+  }
+  ol.steps strong { color: var(--text); }
+
+  pre {
+    background: #0a0f20; border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; overflow: auto; font-size: 13px; line-height: 1.7;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; color: #cfd7f5;
+  }
+  code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .92em; }
+  p code, li code { background: rgba(255,255,255,.07); padding: 2px 6px; border-radius: 6px; }
+
+  .limits { color: var(--muted); font-size: 15px; padding-left: 20px; }
+  .limits li { margin-bottom: 8px; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 30px 0 50px;
+    color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+
+  @media (max-width: 720px) {
+    .states { grid-template-columns: 1fr; }
+    .nav { display: none; }
+    section { padding: 48px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <img src="assets/icon.png" alt="BlankTop icon">
+      <span>留白 BlankTop</span>
+    </div>
+    <nav class="nav">
+      <a href="#states">效果</a>
+      <a href="#features">特性</a>
+      <a href="#install">安装</a>
+      <a href="#config">配置</a>
+      <a href="https://github.com/xiaoan223/BlankTop">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>更优雅的菜单栏开关</h1>
+    <p class="tag">留白是 macOS 27 上的菜单栏折叠工具。一个开关，把不常用的图标收起来，需要时再放出来。</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.1.dmg">下载 .dmg</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.1.zip">下载 .zip</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop">查看源码</a>
+    </div>
+    <p class="meta">v1.0.1 · macOS 27 · 官网 1 MB · MIT 开源</p>
+
+    <figure class="shot">
+      <img src="assets/hero.jpg" alt="菜单栏展开与折叠对比">
+      <figcaption class="caption">上：展开状态，开关在右、底板绿色　下：折叠状态，开关在左、左侧图标收起</figcaption>
+    </figure>
+  </div>
+
+  <section id="states">
+    <h2>一眼看懂现在的状态</h2>
+    <p class="sub">开关本身就是状态指示，不需要再记住一个箭头方向。</p>
+    <div class="states">
+      <div class="state">
+        <img src="assets/state-expanded.png" alt="展开状态">
+        <h3><span class="dot on"></span>展开</h3>
+        <p>圆点在右、底板绿色。菜单栏完整，所有图标可见。</p>
+      </div>
+      <div class="state">
+        <img src="assets/state-collapsed.png" alt="折叠状态">
+        <h3><span class="dot off"></span>折叠</h3>
+        <p>圆点在左、底板灰色。开关左边的图标全部收起，右边保持可见。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>几个关键取舍</h2>
+    <p class="sub">不追求功能多，只把“收起菜单栏”这一件事做干净。</p>
+    <div class="grid">
+      <div class="card">
+        <span class="num">24 ms</span>
+        <h3>并发扫描</h3>
+        <p>每次折叠都会重新读取所有 App 的图标位置，60+ 个 App 并发查询，热态只需二三十毫秒。</p>
+      </div>
+      <div class="card">
+        <span class="num">0</span>
+        <h3>无后台服务</h3>
+        <p>一个 172 KB 的菜单栏进程，没有守护进程、没有网络请求、没有遥测。</p>
+      </div>
+      <div class="card">
+        <span class="num">⌘</span>
+        <h3>用系统的方式排序</h3>
+        <p>按住 ⌘ 拖动图标即可决定收哪些、留哪些，顺序由 macOS 自己记住。</p>
+      </div>
+      <div class="card">
+        <span class="num">MIT</span>
+        <h3>完全开源</h3>
+        <p>Swift + 50 行 ObjC 桥接层，不依赖第三方库，Command Line Tools 即可编译。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>安装</h2>
+    <p class="sub">必须放在 /Applications，系统的菜单栏白名单只认这个目录。</p>
+    <ol class="steps">
+      <li><strong>下载 dmg</strong>，打开后把 BlankTop 拖进 Applications。</li>
+      <li><strong>首次运行</strong>会请求「辅助功能」权限，在「系统设置 → 隐私与安全性 → 辅助功能」里勾选「留白」。</li>
+      <li><strong>按住 ⌘</strong> 把想隐藏的图标拖到开关左边，点一下开关即可。</li>
+    </ol>
+  </section>
+
+  <section id="config">
+    <h2>配置</h2>
+    <p class="sub"><code>~/Library/Application Support/BlankTop/config.json</code></p>
+<pre>{
+  "hotkey": "opt+cmd+h",
+  "autoCollapseSeconds": 0,
+  "icon": "toggle",
+  "expandMode": "allowlist",
+  "sound": "tink",
+  "soundVolume": 0.12
+}</pre>
+    <p class="sub" style="margin-top:22px">
+      <code>icon</code> 支持 18 种样式（toggle / chevron / dot / eye / tray / moon / compress …），
+      也可以在右键菜单里直接切换；<code>sound</code> 可选 tink / pop / purr / bottle / none。
+    </p>
+  </section>
+
+  <section id="limits">
+    <h2>已知限制</h2>
+    <ul class="limits">
+      <li>系统白名单只对 <code>/Applications</code> 下的 App 生效，包括你想保持可见的第三方 App。</li>
+      <li>隐藏按 App 进行：一个 App 有多个图标时，它们一起隐藏或一起显示。</li>
+      <li>时钟、Wi-Fi、控制中心、电池由系统项 ID 保护，永远可见。</li>
+      <li>依赖 macOS 27 的私有框架，Apple 改动它时这个工具会失效——同类工具都一样。</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>© 2026 BlankTop · MIT License</span>
+    <span>私有 API 调用方式来自 <a href="https://github.com/dwarvesf/hidden">Hidden Bar</a>（MIT）</span>
+  </footer>
+</div>
+
+</body>
+</html>
