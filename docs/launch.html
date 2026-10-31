@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>为什么是留白 · BlankTop 1.0.2 发布</title>
+<meta name="description" content="留白 BlankTop 的发布说明：每个设计取舍的理由——为什么用开关而不是箭头，为什么要每次重新扫描，为什么只支持 /Applications。">
+<meta property="og:title" content="为什么是留白 · BlankTop 1.0.2 发布">
+<meta property="og:description" content="每个设计取舍的理由。">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" href="assets/icon.png">
+<style>
+  :root {
+    --navy-900: #0d1226;
+    --navy-800: #141b36;
+    --green: #45c34f;
+    --green-soft: #6fd45f;
+    --text: #eef1fa;
+    --muted: #9aa3c0;
+    --line: rgba(255,255,255,.10);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--navy-900); color: var(--text);
+    font: 16px/1.8 -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--green-soft); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { width: min(920px, 92vw); margin: 0 auto; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0; border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .nav { display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+  .nav a { color: var(--muted); }
+
+  .hero { padding: 72px 0 40px; }
+  .kicker {
+    display: inline-block; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--green-soft); border: 1px solid rgba(69,195,79,.35);
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 18px;
+  }
+  h1 { font-size: clamp(32px, 5vw, 46px); line-height: 1.25; margin: 0 0 18px; letter-spacing: -.6px; }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 720px; }
+
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 22px; margin: 0 0 6px; letter-spacing: -.2px; }
+  .section-sub { color: var(--muted); margin: 0 0 30px; font-size: 15px; }
+
+  .point {
+    border: 1px solid var(--line); border-radius: 18px; padding: 26px 28px;
+    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
+    margin-bottom: 18px;
+  }
+  .point .head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; }
+  .point .num {
+    font: 700 13px/1 "SF Mono", ui-monospace, Menlo, monospace;
+    color: var(--green-soft); border: 1px solid rgba(69,195,79,.35);
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none;
+  }
+  .point h3 { margin: 0; font-size: 18px; }
+  .point .claim { color: var(--text); margin: 0 0 12px; }
+  .point .why { color: var(--muted); margin: 0 0 10px; }
+  .point .cost {
+    font-size: 14px; color: #c9b48a; background: rgba(201,180,138,.08);
+    border-left: 2px solid rgba(201,180,138,.45); padding: 8px 12px; border-radius: 0 8px 8px 0;
+    margin: 14px 0 0;
+  }
+  .point .cost b { color: #e0cba0; font-weight: 600; }
+
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; }
+  .shots figure { margin: 0; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: rgba(255,255,255,.03); }
+  .shots img { width: 100%; display: block; }
+  .shots figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td.yes { color: var(--green-soft); }
+  td.no { color: #8d94ac; }
+  .table-wrap { overflow-x: auto; }
+
+  .cta {
+    text-align: center; padding: 56px 0 72px; border-top: 1px solid var(--line);
+  }
+  .cta h2 { font-size: 26px; margin-bottom: 10px; }
+  .cta p { color: var(--muted); margin: 0 0 26px; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { padding: 12px 22px; border-radius: 12px; font-weight: 600; font-size: 15px; border: 1px solid transparent; }
+  .btn-primary { background: var(--green); color: #06240b; }
+  .btn-primary:hover { background: var(--green-soft); text-decoration: none; }
+  .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(255,255,255,.03); }
+  .btn-ghost:hover { background: rgba(255,255,255,.07); text-decoration: none; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 28px 0 48px;
+    color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    .nav { display: none; }
+    .shots { grid-template-columns: 1fr; }
+    section { padding: 44px 0; }
+    .point { padding: 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <img src="assets/icon.png" alt="BlankTop">
+      <span>留白 BlankTop</span>
+    </div>
+    <nav class="nav">
+      <a href="index.html">首页</a>
+      <a href="#why">为什么做</a>
+      <a href="#points">卖点与理由</a>
+      <a href="#compare">对比</a>
+      <a href="https://github.com/xiaoan223/BlankTop">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <span class="kicker">Release 1.0.2</span>
+    <h1>为什么是留白</h1>
+    <p class="lede">
+      菜单栏折叠是个小功能，但每个细节都要做选择：用箭头还是开关、要不要缓存、什么时候扫描、
+      颜色从哪来。这篇发布说明把每个卖点背后的理由写出来，包括它们各自的代价。
+    </p>
+  </div>
+
+  <section id="why">
+    <h2>先说说为什么做它</h2>
+    <p class="section-sub">不是“再做一个菜单栏工具”，而是解决 macOS 27 上一个具体的新问题。</p>
+    <p>
+      macOS 27 把整条菜单栏重做成了一个整体窗口。这个改动让过去所有同类工具——Bartender、Ice、
+      Hidden Bar——赖以工作的“把图标窗口推到屏幕外”彻底失效，它们在 27 上要么什么都不藏，要么乱藏。
+    </p>
+    <p>
+      更麻烦的是：一旦装了很多菜单栏 App，图标会挤到刘海底下、挤到当前 App 的菜单后面，你看不见也点不到。
+      系统设置只能整体隐藏，没法“只收起左边那几个”。
+    </p>
+    <p>
+      留白就是在补这个洞：一个开关，把开关左边的图标收起来，右边保持可见，用系统自己的方式决定谁在哪一边。
+    </p>
+  </section>
+
+  <section id="points">
+    <h2>六个卖点，以及为什么这么做</h2>
+    <p class="section-sub">每条都写了「为什么」和「代价」，因为不谈代价的卖点没意义。</p>
+
+    <div class="point">
+      <div class="head"><span class="num">01</span><h3>用开关，不用箭头</h3></div>
+      <p class="claim">菜单栏里是一个 iPhone 式小开关，不是 <code>‹ ›</code> 箭头。</p>
+      <p class="why">
+        箭头表达的是“方向”——你得先想一下“这个箭头是让我往哪边收”。开关表达的是“状态”——
+        圆点在右、底板绿色就是开着，在左、灰色就是关着，不需要学习成本。
+        而且开关的方向和结果同向：往右拨，图标朝右展开；往左拨，左边收起。
+        箭头一旦做成左右两个字符，还容易和系统的返回/前进按钮混淆。
+      </p>
+      <p class="cost"><b>代价：</b>开关比箭头宽，占更多菜单栏空间；而且开关天然带“开/关”语义，
+        一旦你对“开”的理解和我不同，就会觉得反了——所以它可以在菜单里一键切换样式，18 种都随你。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">02</span><h3>绿色取自旁边的图标，而不是品牌色</h3></div>
+      <p class="claim">开关打开时的绿是 <code>#79BC51</code>，直接从系统里相邻图标的绿色采样来的。</p>
+      <p class="why">
+        菜单栏是个很挤的地方，任何高饱和的颜色都会“抢视线”。我不想让一个工具图标成为整条栏里最亮的东西，
+        所以取的是环境里已经存在的绿——它和邻居是同一族颜色，你的眼睛不会每次扫过都被拽一下。
+        关闭状态的底板用 15% 的深灰而不是红色：红色在 macOS 语义里属于危险和错误，
+        而“收起图标”只是个中性状态，标红会让人误以为出了问题。
+      </p>
+      <p class="cost"><b>代价：</b>颜色偏低饱和，强光或低对比度屏幕上不容易一眼分辨开/关——所以圆点的位置才是主要信号，颜色只是辅助。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">03</span><h3>每次折叠都重新扫描，而且并发</h3></div>
+      <p class="claim">不缓存布局，一次折叠扫遍所有 App 的菜单栏图标，热态 20–30 ms。</p>
+      <p class="why">
+        这是踩过坑之后的选择。为了快，最初做了缓存：第一次折叠算一遍就记住。结果你一旦用 ⌘ 拖动图标
+        改变位置，缓存就和现实对不上了，点开关会“没反应”——因为程序还按旧地图在藏东西。
+        正确性比省 200 毫秒重要得多。
+        而“每次扫描会不会卡”这个问题，用并发解决：每个 App 的辅助功能查询互相独立，
+        60 多个 App 并行跑，从串行的约 1 秒压到二三十毫秒，快到感觉不到它在扫。
+      </p>
+      <p class="cost"><b>代价：</b>第一次折叠（冷态）仍要约 250 ms；且每次都要拿到辅助功能权限，没授权就完全没法工作。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">04</span><h3>分区交给 ⌘ 拖动，不自己做排序界面</h3></div>
+      <p class="claim">哪些图标收起，由你在菜单栏上按住 ⌘ 拖动决定，顺序 macOS 自己记住。</p>
+      <p class="why">
+        自建一套“勾选哪些 App 隐藏”的列表，意味着要维护一份自己的布局数据库：App 改名、重装、
+        图标增减都会让这份数据腐烂。而 ⌘ 拖动是系统原生能力，位置存在系统的偏好里，
+        重启、换主题、系统升级都跟着走。工具只负责读“谁在开关左边”，不负责记。
+      </p>
+      <p class="cost"><b>代价：</b>第一次用需要手动拖几下，说明书里必须写清楚；也没法按“场景”一键切换布局。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">05</span><h3>明确只支持 /Applications，并且把限制写在首页</h3></div>
+      <p class="claim">App 必须放在 <code>/Applications</code>，否则折叠会连它自己都藏掉。</p>
+      <p class="why">
+        这是系统的硬限制，不是我的选择：macOS 27 的菜单栏白名单只对 <code>/Applications</code> 下的
+        应用生效，放在 <code>~/Applications</code>、桌面或 build 目录里，即使把 bundle id 明确写进白名单也没用。
+        我在开发时踩到过这个坑（自己编译的 App 放在别的目录，行为完全不同），所以宁可在首页就写明白，
+        也不想让你装完发现“怎么时好时坏”。
+      </p>
+      <p class="cost"><b>代价：</b>不能做成“解压即用”的绿色软件；你的其它菜单栏 App 也得待在 /Applications 才能保持可见。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">06</span><h3>用私有 API，但失败就“放开”而不是乱藏</h3></div>
+      <p class="claim">隐藏基于 macOS 27 内部考试锁定模式的菜单栏白名单，没有公开接口可用。</p>
+      <p class="why">
+        Apple 没有提供“隐藏别人的菜单栏图标”的公开 API。27 上可行的路径只有一条：
+        调用系统内部给考试模式用的 allow-list（<code>MenuBarClientCore</code>），把“允许显示的 App”
+        列给系统，剩下的由系统自己隐藏和重排。
+        既然用了私有接口，就得为它失效做好准备：所有调用都检查可用性，任何一步失败都立刻恢复正常显示，
+        绝不允许出现“图标被藏了但收不回来”的状态。
+      </p>
+      <p class="cost"><b>代价：</b>Apple 改动这个框架时，工具会直接失效（同类工具无一例外）；
+        也意味着它不可能上架 App Store。</p>
+    </div>
+
+    <div class="point">
+      <div class="head"><span class="num">07</span><h3>MIT 开源、无网络、无遥测</h3></div>
+      <p class="claim">全部源码公开，编译不需要 Xcode，App 不联网。</p>
+      <p class="why">
+        这个工具必须拿到「辅助功能」权限——那是 macOS 里权限最大的一类授权，能读到所有窗口和控件。
+        要求你信任一个闭源、还不能审计的二进制，不合理。开源是这类工具的基本礼貌：
+        你能看到它只做了三件事（读图标位置、提交白名单、撤销白名单），没有任何别的动作。
+        顺带的好处是编译门槛低：Command Line Tools 就够，5 秒出包。
+      </p>
+      <p class="cost"><b>代价：</b>没有签名公证，首次打开需要在系统设置里手动放行；每次重新编译还要重新授权一次。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>两种状态，一眼可读</h2>
+    <p class="section-sub">开关本身就是状态指示：位置是主信号，颜色是辅助。</p>
+    <div class="shots">
+      <figure>
+        <img src="assets/state-expanded.png" alt="展开状态">
+        <figcaption>展开：圆点在右、底板绿，菜单栏完整。</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/state-collapsed.png" alt="折叠状态">
+        <figcaption>折叠：圆点在左、底板灰，左侧图标收起。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="compare">
+    <h2>和同类工具比，差在哪</h2>
+    <p class="section-sub">不吹“最强”，只说定位。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>　</th><th>留白 BlankTop</th><th>Bartender</th><th>Ice / Thaw</th><th>Hidden Bar</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>价格</td><td class="yes">免费</td><td class="no">付费</td><td class="yes">免费</td><td class="yes">免费</td></tr>
+          <tr><td>开源可审计</td><td class="yes">MIT</td><td class="no">否</td><td class="yes">GPL</td><td class="yes">MIT</td></tr>
+          <tr><td>macOS 27 隐藏</td><td class="yes">是</td><td class="yes">是</td><td class="yes">部分版本</td><td class="yes">1.11.1+</td></tr>
+          <tr><td>只收起一部分图标</td><td class="yes">是</td><td class="yes">是</td><td class="yes">是</td><td class="yes">是</td></tr>
+          <tr><td>分组 / 规则 / 搜索</td><td class="no">不做</td><td class="yes">丰富</td><td class="yes">部分</td><td class="no">不做</td></tr>
+          <tr><td>界面复杂度</td><td class="yes">一个开关</td><td class="no">完整设置面板</td><td class="no">设置面板</td><td class="yes">一条分隔线</td></tr>
+          <tr><td>体积</td><td class="yes">约 340 KB</td><td class="no">数十 MB</td><td class="no">数 MB</td><td class="yes">约 1 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-sub" style="margin-top:18px">
+      结论很简单：如果你要按 App 分组、按场景切换布局、搜索菜单项，用 Bartender 或 Ice；
+      如果你只是想把左边那堆不常用的图标收起来，留白更轻。
+    </p>
+  </section>
+
+  <section>
+    <h2>已知限制（写在发布页里）</h2>
+    <ul style="color:var(--muted); padding-left:20px; margin:0;">
+      <li>必须放在 <code>/Applications</code>，包括想保持可见的其它 App</li>
+      <li>隐藏按 App 进行：一个 App 有多个图标时一起隐藏</li>
+      <li>时钟、Wi-Fi、控制中心、电池由系统保护，永远可见</li>
+      <li>依赖私有框架，macOS 更新可能让它失效</li>
+      <li>折叠期间新启动的 App 会被一并隐藏，直到下次展开</li>
+    </ul>
+  </section>
+
+  <div class="cta">
+    <h2>下载 1.0.2</h2>
+    <p>macOS 27 · 约 340 KB · MIT 开源</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.dmg">下载 .dmg</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.zip">下载 .zip</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop">查看源码</a>
+    </div>
+  </div>
+
+  <footer>
+    <span>© 2026 BlankTop · MIT License</span>
+    <span><a href="index.html">返回首页</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

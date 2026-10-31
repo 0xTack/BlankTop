@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/xiaoan223/BlankTop/releases/latest">下载</a> ·
   <a href="https://xiaoan223.github.io/BlankTop/">官网</a> ·
+  <a href="https://xiaoan223.github.io/BlankTop/launch.html">为什么这么设计</a> ·
   <a href="#编译">编译</a> ·
   <a href="#原理">原理</a>
 </p>
