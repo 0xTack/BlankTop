@@ -89,6 +89,15 @@
   .meta a { color: var(--muted); }
 
   /* ---------- 可点击演示 ---------- */
+  .showcase { margin: 48px auto 0; max-width: 1040px; }
+  .showcase img {
+    width: 100%; display: block; border-radius: var(--radius);
+    border: 1px solid var(--line);
+    box-shadow: 0 48px 90px -50px rgba(0,0,0,.95);
+    transition: transform .4s var(--ease), box-shadow .4s var(--ease);
+  }
+  .showcase:hover img { transform: translateY(-3px); box-shadow: 0 56px 100px -50px rgba(0,0,0,1); }
+  .showcase .hint { font-size: 12.5px; color: var(--dim); text-align: center; margin: 14px 0 0; }
   .demo-wrap { margin: 46px auto 0; max-width: 980px; perspective: 1200px; }
   .demo {
     position: relative; padding: 26px 22px; border-radius: var(--radius);
@@ -319,25 +328,9 @@
     </div>
     <p class="meta">340 KB · MIT 开源 · <a href="launch.html">为什么这么设计 →</a></p>
 
-    <div class="demo-wrap">
-      <div class="demo">
-        <div class="menubar">
-          <div class="menus"><span></span><span></span><span></span><span></span></div>
-          <div class="ico left"></div>
-          <div class="ico left r"></div>
-          <div class="ico left t"></div>
-          <div class="ico left d"></div>
-          <div class="ico left r"></div>
-          <label class="switch">
-            <input type="checkbox" aria-label="演示开关" checked>
-            <span class="track"><span class="knob"></span></span>
-          </label>
-          <div class="ico right r"></div>
-          <div class="ico right"></div>
-          <div class="ico right t"></div>
-        </div>
-        <div class="hint">点一下开关试试 —— <b>左边的图标会收起来，右边不动</b></div>
-      </div>
+    <div class="showcase">
+      <img src="assets/hero.jpg" alt="菜单栏展开与折叠对比">
+      <p class="hint">上：展开，开关在右、底板绿色　下：折叠，开关在左、左侧图标收起</p>
     </div>
   </div>
 
@@ -451,21 +444,6 @@
       <div class="step reveal">
         <h3>⌘ 拖几下</h3>
         <p>把想隐藏的图标拖到开关左边，点一下开关，完成。</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="donate">
-    <div class="section-head reveal">
-      <p class="eyebrow">Support</p>
-      <h2>请作者喝个咖啡</h2>
-      <p class="section-sub">留白免费开源，没有内购也没有追踪。如果它帮到了你，欢迎扫码支持。</p>
-    </div>
-    <div class="donate reveal">
-      <img src="assets/donate.png" alt="赞赏码">
-      <div class="txt">
-        <p>右键菜单最下面也有这一项：<b>请作者喝个咖啡 ☕</b></p>
-        <p style="color:var(--dim);font-size:13.5px">你也可以直接去 GitHub 点个 Star，同样有用。</p>
       </div>
     </div>
   </section>
