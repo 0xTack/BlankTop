@@ -204,6 +204,7 @@
   .gallery { display: grid; grid-template-columns: 1fr; gap: 20px; }
   .gallery figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: rgba(255,255,255,.03); }
   .gallery img { width: 100%; display: block; }
+  .pick { width: 100%; display: block; border-radius: var(--radius); border: 1px solid var(--line); }
   .gallery figcaption { font-size: 12.5px; color: var(--dim); padding: 10px 14px; border-top: 1px solid var(--line); }
 
   /* ---------- 细节列表 ---------- */
@@ -317,6 +318,7 @@
     <nav class="nav">
       <a href="#why">卖点</a>
       <a href="#states">效果</a>
+      <a href="#real">真实</a>
       <a href="#install">安装</a>
       <a href="launch.html">为什么这么设计</a>
       <a class="gh" href="https://github.com/xiaoan223/BlankTop">GitHub</a>
@@ -391,21 +393,32 @@
   </section>
 
 
-  <section id="icons">
+  <section id="real">
     <div class="section-head reveal">
-      <p class="eyebrow">18 styles</p>
-      <h2>18 种图标，每种都有两种状态</h2>
-      <p class="section-sub">右键菜单 →「图标」随时切换，立即生效。下面是全部样式的真实渲染：</p>
+      <p class="eyebrow">On a real Mac</p>
+      <h2>真实菜单栏里的样子</h2>
+      <p class="section-sub">截图来自一台日常使用的 Mac，原样未做处理。左边那段空出来的位置，就是被收起的图标。</p>
     </div>
     <div class="gallery reveal">
       <figure>
-        <img src="assets/icons-on.jpg" alt="展开状态下的 18 种图标样式">
-        <figcaption>展开：圆点在右、底板绿色</figcaption>
+        <img src="assets/real-on.jpg" alt="展开状态的菜单栏">
+        <figcaption>开：开关在右，左侧图标都在</figcaption>
       </figure>
       <figure>
-        <img src="assets/icons-off.jpg" alt="折叠状态下的 18 种图标样式">
-        <figcaption>折叠：圆点在左、底板灰色</figcaption>
+        <img src="assets/real-off.jpg" alt="折叠状态的菜单栏">
+        <figcaption>关：开关在左，左边整体收起</figcaption>
       </figure>
+    </div>
+  </section>
+
+  <section id="icons">
+    <div class="section-head reveal">
+      <p class="eyebrow">18 styles</p>
+      <h2>图标可以换，挑几个好看的</h2>
+      <p class="section-sub">一共 18 种，右键菜单里随时切换、立即生效。下面放几个我自己常用的：</p>
+    </div>
+    <div class="reveal">
+      <img class="pick" src="assets/icons-pick.jpg" alt="图标样式示例">
     </div>
   </section>
 

@@ -262,12 +262,12 @@ let cards: [() -> Void] = [
         chip("真实截图", x: 90, top: 110)
         drawText("我自己的\n菜单栏", x: 86, top: 200, width: 900, size: 88, fontW: .bold, lineSpacing: 14)
         drawText("开 · 全部可见", x: 90, top: 470, width: 700, size: 30, fontW: .semibold, color: green)
-        drawStrip("/tmp/real_on_masked.png", top: 520, height: 120)
+        drawStrip("/tmp/real_on_raw.png", top: 520, height: 120)
 
         drawText("关 · 左边收起", x: 90, top: 700, width: 700, size: 30, fontW: .semibold, color: green)
-        drawStrip("/tmp/real_off_masked.png", top: 750, height: 120)
+        drawStrip("/tmp/real_off_raw.png", top: 750, height: 120)
 
-        drawText("截图来自我这台 Mac，其他 App 的图标已做模糊处理", x: 90, top: 930, width: 880,
+        drawText("截图来自我这台 Mac，原样未做处理", x: 90, top: 930, width: 880,
                  size: 28, color: muted)
         pageNumber("07")
     },
