@@ -30,6 +30,9 @@ if [ -f assets/Icon.icns ]; then
 else
   echo "    警告：assets/Icon.icns 不存在，将使用默认图标"
 fi
+if [ -f assets/donate.png ]; then
+  cp assets/donate.png "$APP/Contents/Resources/donate.png"
+fi
 
 echo "==> ad-hoc 签名"
 codesign --force --sign - "$APP"

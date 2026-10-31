@@ -290,6 +290,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSLog("BlankTop: started, native visibility available = \(HBNativeVisibilityIsAvailable()), accessibility trusted = \(MenuBarInventory.isAuthorized)")
+
+        // 预览/截图用：open -a BlankTop --args --donate
+        if CommandLine.arguments.contains("--donate") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.showDonate()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -381,6 +388,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let donate = NSMenuItem(title: "请作者喝个咖啡 ☕",
+                                action: #selector(menuDonate),
+                                keyEquivalent: "")
+        donate.target = self
+        menu.addItem(donate)
+
         let quit = NSMenuItem(title: "退出 留白", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -423,6 +436,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         config.soundName = (config.soundName == "none") ? "tink" : "none"
         ConfigStore.save(config)
         if config.soundName != "none" { playSound(collapsing: false) }
+    }
+
+    // MARK: 赞赏
+
+    private var donateWindow: NSWindow?
+
+    @objc private func menuDonate() {
+        showDonate()
+    }
+
+    func showDonate() {
+        if let window = donateWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let width: CGFloat = 380
+        let height: CGFloat = 470
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+                              styleMask: [.titled, .closable],
+                              backing: .buffered,
+                              defer: false)
+        window.title = "请作者喝个咖啡"
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .aqua)
+        window.center()
+
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor.white.cgColor
+
+        let title = NSTextField(labelWithString: "请作者喝个咖啡 ☕")
+        title.font = NSFont.systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = NSColor.black
+        title.alignment = .center
+        title.frame = NSRect(x: 0, y: height - 54, width: width, height: 26)
+        content.addSubview(title)
+
+        let subtitle = NSTextField(labelWithString: "如果这个小工具帮到了你，欢迎扫码支持一下")
+        subtitle.font = NSFont.systemFont(ofSize: 12)
+        subtitle.textColor = NSColor(white: 0.35, alpha: 1)
+        subtitle.alignment = .center
+        subtitle.frame = NSRect(x: 0, y: height - 78, width: width, height: 18)
+        content.addSubview(subtitle)
+
+        let imageView = NSImageView()
+        imageView.image = donateImage()
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.frame = NSRect(x: 40, y: 132, width: width - 80, height: 250)
+        content.addSubview(imageView)
+
+        let note = NSTextField(labelWithString: "感谢使用留白 · BlankTop")
+        note.font = NSFont.systemFont(ofSize: 11)
+        note.textColor = NSColor(white: 0.55, alpha: 1)
+        note.alignment = .center
+        note.frame = NSRect(x: 0, y: 96, width: width, height: 18)
+        content.addSubview(note)
+
+        window.contentView = content
+        donateWindow = window
+
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func donateImage() -> NSImage? {
+        guard let url = Bundle.main.url(forResource: "donate", withExtension: "png") else { return nil }
+        return NSImage(contentsOf: url)
     }
 
     // MARK: 音效

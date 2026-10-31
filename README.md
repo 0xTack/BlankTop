@@ -120,6 +120,16 @@ log stream --predicate 'process == "BlankTop"' --level info
 ./build/hotkey    # 发送一次 ⌥⌘H
 ```
 
+
+## 请作者喝个咖啡
+
+留白免费开源，也没有任何内购和追踪。如果它帮到了你，欢迎扫码支持：
+
+<p align="center">
+  <img src="docs/assets/donate.png" alt="赞赏码" width="220">
+</p>
+
+
 ## 致谢
 
 - [Hidden Bar](https://github.com/dwarvesf/hidden) — 私有 API 的调用方式与 macOS 27 的隐藏机制探索
