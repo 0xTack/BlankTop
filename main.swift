@@ -160,6 +160,7 @@ enum ConfigStore {
 
 struct MenuBarItem {
     let bundleIdentifier: String?
+    let pid: pid_t
     let frame: CGRect
 }
 
@@ -208,7 +209,7 @@ enum MenuBarInventory {
 
         for child in children {
             guard let frame = frame(of: child) else { continue }
-            items.append(MenuBarItem(bundleIdentifier: bundle, frame: frame))
+            items.append(MenuBarItem(bundleIdentifier: bundle, pid: pid, frame: frame))
         }
         return items
     }
@@ -242,7 +243,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var visibleBundles: [String] = []
     private var hiddenBundles: [String] = []
     private var hasScan = false
+    private var scannedPIDs: Set<pid_t> = []
     private var didHintEmpty = false
+    private var launchRefresh: DispatchWorkItem?
     private var rescanWorkItem: DispatchWorkItem?
 
     private var hotKeyRef: EventHotKeyRef?
@@ -268,6 +271,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyIcon()
 
         installHotKey()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(appDidLaunch(_:)),
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil)
 
         if !MenuBarInventory.isAuthorized {
             MenuBarInventory.requestAuthorization()
@@ -301,6 +310,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         rescanWorkItem?.cancel()
+        launchRefresh?.cancel()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         releaseAssertion()
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
@@ -551,6 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.hiddenBundles = Array(hidden)
             self.visibleBundles = Array(all.subtracting(hidden))
             self.hasScan = true
+            self.scannedPIDs = Set(items.map { $0.pid })
             NSLog("BlankTop: scan \(items.count) items in \(Int(Date().timeIntervalSince(started) * 1000))ms")
 
             if ProcessInfo.processInfo.environment["MBF_DEBUG"] == "1" {
@@ -585,32 +597,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoCollapseTimer?.invalidate()
         autoCollapseTimer = nil
 
-        if config.expandMode == "allowlist", hasScan, assertion != nil {
-            // 不释放限制，只把折叠区也加进白名单：系统一次过渡把图标放回来，
-            // 不会整条菜单栏推倒重建。
-            activate(allowed: visibleBundles + hiddenBundles) { [weak self] ok in
-                guard let self, ok else {
-                    self?.releaseAndMarkExpanded()
-                    return
-                }
-                self.isCollapsed = false
-                self.applyIcon()
-                self.playSound(collapsing: false)
-                NSLog("BlankTop: expanded (allowlist)")
-                self.scheduleRescan()
-            }
-        } else {
+        guard config.expandMode == "allowlist", hasScan, assertion != nil else {
             let wasCollapsed = isCollapsed
             releaseAndMarkExpanded()
             if wasCollapsed { playSound(collapsing: false) }
             NSLog("BlankTop: expanded (release)")
+            return
         }
+
+        // 折叠期间有新 App 启动时，它的图标是在限制生效的状态下创建的，
+        // 只把它加进白名单系统也不会重新摆放——必须先释放一次再重建。
+        if hasNewAppsSinceScan() {
+            NSLog("BlankTop: 折叠期间有新 App 启动，重排一次白名单")
+            releaseAssertion()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                guard let self, !self.isCollapsed else { return }
+                self.finishAllowlistExpand()
+            }
+            return
+        }
+
+        // 常规情况：不释放限制，只把折叠区也加进白名单，
+        // 系统一次过渡把图标放回来，不会整条菜单栏重建。
+        finishAllowlistExpand()
     }
 
     private func releaseAndMarkExpanded() {
         releaseAssertion()
         isCollapsed = false
         applyIcon()
+    }
+
+    private func finishAllowlistExpand() {
+        activate(allowed: allVisibleBundleIdentifiers()) { [weak self] ok in
+            guard let self, ok else {
+                self?.releaseAndMarkExpanded()
+                return
+            }
+            self.isCollapsed = false
+            self.applyIcon()
+            self.playSound(collapsing: false)
+            NSLog("BlankTop: expanded (allowlist)")
+            self.scheduleRescan()
+        }
+    }
+
+    /// 折叠之后是否有新 App 启动（它们的图标是在限制生效时创建的）。
+    private func hasNewAppsSinceScan() -> Bool {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return NSWorkspace.shared.runningApplications.contains { app in
+            guard app.bundleURL?.pathExtension == "app",
+                  app.processIdentifier != ownPID else { return false }
+            return !scannedPIDs.contains(app.processIdentifier)
+        }
+    }
+
+    /// 展开状态下该放行的 App：已扫描到的可见/折叠区，加上此刻所有运行中的 App。
+    private func allVisibleBundleIdentifiers() -> [String] {
+        let running = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier }
+        return visibleBundles + hiddenBundles + running
+    }
+
+    /// 折叠期间、或展开状态下新启动的 App，需要重新提交一次白名单才看得见。
+    private func refreshExpandedAllowListIfNeeded() {
+        guard !isCollapsed, config.expandMode == "allowlist", assertion != nil, hasScan else { return }
+        activate(allowed: allVisibleBundleIdentifiers()) { _ in }
+        scheduleRescan()
+    }
+
+    @objc private func appDidLaunch(_ notification: Notification) {
+        guard !isCollapsed, config.expandMode == "allowlist", assertion != nil, hasScan else { return }
+        launchRefresh?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.refreshExpandedAllowListIfNeeded() }
+        launchRefresh = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
     /// 展开后等布局稳定，再把分区刷新一遍，保持和用户拖动后的顺序一致。
