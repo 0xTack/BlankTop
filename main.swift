@@ -10,6 +10,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import CryptoKit
 
 // MARK: - 图标样式
 
@@ -977,6 +978,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             try? manager.removeItem(atPath: launchAgentPath)
         }
+    }
+
+
+    /// 重新编译后签名会变，系统里那条旧的授权记录看着是勾上的，实际对新程序无效。
+    /// 这里在检测到「换了二进制但权限没生效」时清掉旧记录，让系统的授权弹窗能真正起作用。
+    private func resetStalePermissionIfNeeded() {
+        guard let executable = Bundle.main.executableURL,
+              let data = try? Data(contentsOf: executable) else { return }
+        let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+        let key = "binaryHash"
+        let stored = UserDefaults.standard.string(forKey: key)
+
+        defer { UserDefaults.standard.set(hash, forKey: key) }
+        guard let stored, stored != hash, !MenuBarInventory.isAuthorized else { return }
+
+        NSLog("BlankTop: 检测到新版本且权限未生效，清除旧的授权记录")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "com.xa.blanktop"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
     }
 
     // MARK: 提示
