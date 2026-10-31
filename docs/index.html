@@ -4,182 +4,386 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>留白 BlankTop · 更优雅的菜单栏开关</title>
-<meta name="description" content="macOS 27 的菜单栏折叠工具：开关左边的图标收起来，右边保持可见。开源、轻量、无后台驻留。">
+<meta name="description" content="一个开关，收起菜单栏左边不常用的图标。340 KB、无后台进程、MIT 开源，macOS 27。">
 <meta property="og:title" content="留白 BlankTop · 更优雅的菜单栏开关">
-<meta property="og:description" content="macOS 27 的菜单栏折叠工具。开源、轻量、无后台驻留。">
+<meta property="og:description" content="一个开关，收起菜单栏左边不常用的图标。340 KB、无后台进程、MIT 开源。">
 <meta property="og:image" content="assets/og.jpg">
 <link rel="icon" href="assets/icon.png">
 <style>
   :root {
-    --navy-900: #0d1226;
-    --navy-800: #141b36;
-    --navy-700: #1e2750;
-    --navy-600: #2b3766;
-    --green: #45c34f;
-    --green-soft: #6fd45f;
-    --text: #eef1fa;
-    --muted: #9aa3c0;
+    --bg: #0b1020;
+    --bg-2: #101733;
+    --panel: rgba(255,255,255,.045);
     --line: rgba(255,255,255,.10);
+    --text: #eef1fa;
+    --muted: #98a1bf;
+    --dim: #6f7896;
+    --green: #45c34f;
+    --green-soft: #7bd96a;
+    --radius: 22px;
+    --ease: cubic-bezier(.22,.61,.36,1);
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
   body {
-    margin: 0;
-    background: var(--navy-900);
-    color: var(--text);
-    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.75 -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  body::before {
+    content: ""; position: fixed; inset: -20% 0 auto 0; height: 820px; z-index: -1;
+    background:
+      radial-gradient(60% 55% at 22% 18%, rgba(69,195,79,.16), transparent 70%),
+      radial-gradient(55% 50% at 78% 8%, rgba(64,96,220,.22), transparent 72%),
+      radial-gradient(70% 60% at 50% 0%, rgba(24,36,80,.9), transparent 80%);
+    filter: blur(6px); pointer-events: none;
   }
   a { color: var(--green-soft); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .wrap { width: min(1080px, 92vw); margin: 0 auto; }
+  .wrap { width: min(1120px, 92vw); margin: 0 auto; }
 
   header {
+    position: sticky; top: 0; z-index: 20;
     display: flex; align-items: center; justify-content: space-between;
-    padding: 22px 0; border-bottom: 1px solid var(--line);
+    padding: 14px 0; backdrop-filter: saturate(140%) blur(14px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .3s var(--ease), background .3s var(--ease);
   }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .3px; }
-  .brand img { width: 26px; height: 26px; border-radius: 7px; }
-  .nav { display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+  header.stuck { border-color: var(--line); background: rgba(11,16,32,.72); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .2px; }
+  .brand img { width: 26px; height: 26px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .nav { display: flex; align-items: center; gap: 22px; font-size: 14px; }
   .nav a { color: var(--muted); }
+  .nav a:hover { color: var(--text); text-decoration: none; }
+  .nav .gh { padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; }
 
-  .hero { padding: 72px 0 40px; text-align: center; }
-  .hero h1 {
-    font-size: clamp(38px, 6vw, 64px);
-    line-height: 1.15; margin: 0 0 16px; letter-spacing: -1px;
+  /* ---------- hero ---------- */
+  .hero { padding: 78px 0 26px; text-align: center; }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted);
+    border: 1px solid var(--line); background: rgba(255,255,255,.03);
+    padding: 5px 12px; border-radius: 999px; margin-bottom: 22px;
   }
-  .hero .tag {
-    font-size: clamp(17px, 2.4vw, 22px); color: var(--muted); margin: 0 auto 34px;
-    max-width: 620px;
+  .kicker i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
+  h1 {
+    font-size: clamp(40px, 7vw, 74px); line-height: 1.06; letter-spacing: -2px;
+    margin: 0 0 20px; font-weight: 700;
   }
+  h1 .grad {
+    background: linear-gradient(100deg, #ffffff 10%, #b9c6ff 45%, #7bd96a 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lede { font-size: clamp(16px, 2vw, 19px); color: var(--muted); margin: 0 auto 32px; max-width: 640px; }
   .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 22px; border-radius: 12px; font-weight: 600; font-size: 15px;
-    border: 1px solid transparent; transition: .15s;
+    display: inline-flex; align-items: center; gap: 8px; padding: 13px 24px; border-radius: 14px;
+    font-weight: 650; font-size: 15px; border: 1px solid transparent;
+    transition: transform .18s var(--ease), background .18s var(--ease), box-shadow .18s var(--ease);
   }
-  .btn-primary { background: var(--green); color: #06240b; }
-  .btn-primary:hover { background: var(--green-soft); text-decoration: none; }
-  .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(255,255,255,.03); }
-  .btn-ghost:hover { background: rgba(255,255,255,.07); text-decoration: none; }
-  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .btn:hover { text-decoration: none; transform: translateY(-2px); }
+  .btn-primary { background: linear-gradient(180deg, #63d95b, #3cba47); color: #06240b; box-shadow: 0 10px 28px rgba(69,195,79,.28); }
+  .btn-primary:hover { box-shadow: 0 14px 34px rgba(69,195,79,.38); }
+  .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(255,255,255,.04); }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--dim); }
+  .meta a { color: var(--muted); }
 
-  .shot { margin: 26px 0 0; }
-  .shot img { width: 100%; display: block; border-radius: 20px; }
-  .caption { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  /* ---------- 可点击演示 ---------- */
+  .demo-wrap { margin: 46px auto 0; max-width: 980px; perspective: 1200px; }
+  .demo {
+    position: relative; padding: 26px 22px; border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+    border: 1px solid var(--line); box-shadow: 0 40px 80px -40px rgba(0,0,0,.9);
+    transform: rotateX(3deg); transition: transform .5s var(--ease);
+  }
+  .demo:hover { transform: rotateX(0deg) translateY(-3px); }
+  .demo .hint { font-size: 12px; color: var(--dim); margin-top: 14px; text-align: center; }
+  .demo .hint b { color: var(--muted); font-weight: 600; }
 
-  section { padding: 64px 0; border-top: 1px solid var(--line); }
-  h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -.3px; }
-  .sub { color: var(--muted); margin: 0 0 32px; font-size: 15px; }
+  .menubar {
+    display: flex; align-items: center; gap: 10px;
+    height: 64px; padding: 0 18px; border-radius: 16px;
+    background: linear-gradient(180deg, #fbf8f0, #eee6d3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 18px 30px -22px rgba(0,0,0,.8);
+    overflow: hidden;
+  }
+  .menubar .menus { display: flex; gap: 12px; margin-right: auto; }
+  .menubar .menus span { display: block; height: 7px; border-radius: 4px; background: rgba(42,51,80,.45); }
+  .menubar .menus span:nth-child(1) { width: 26px; }
+  .menubar .menus span:nth-child(2) { width: 40px; }
+  .menubar .menus span:nth-child(3) { width: 30px; }
+  .menubar .menus span:nth-child(4) { width: 22px; }
 
-  .states { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .ico {
+    width: 22px; height: 22px; border-radius: 6px; flex: none;
+    background: rgba(42,51,80,.72);
+    display: grid; place-items: center;
+    transition: opacity .34s var(--ease), transform .34s var(--ease), width .34s var(--ease), margin .34s var(--ease);
+  }
+  .ico::after { content: ""; width: 9px; height: 9px; border-radius: 3px; background: #f7f3e8; opacity: .55; }
+  .ico.r { border-radius: 50%; }
+  .ico.t { clip-path: polygon(50% 8%, 92% 88%, 8% 88%); }
+  .ico.d { border-radius: 3px; transform: rotate(45deg) scale(.82); }
+
+  .switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .track {
+    display: block; width: 46px; height: 27px; border-radius: 999px;
+    background: #9ba0ae; transition: background .28s var(--ease);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.18);
+  }
+  .knob {
+    display: block; width: 21px; height: 21px; margin: 3px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    transition: transform .28s var(--ease);
+  }
+  .switch input:checked + .track { background: linear-gradient(180deg, #6fd45f, #3cba47); }
+  .switch input:checked + .track .knob { transform: translateX(19px); }
+
+  /* 关掉开关（未选中）= 收起左侧图标 */
+  .demo:not(:has(input:checked)) .ico.left {
+    opacity: 0; width: 0; margin-left: -10px; transform: translateX(18px) scale(.4);
+    pointer-events: none;
+  }
+
+  /* ---------- 卖点 ---------- */
+  section { padding: 84px 0; }
+  .section-head { margin-bottom: 40px; }
+  .eyebrow { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--green-soft); margin: 0 0 10px; }
+  h2 { font-size: clamp(24px, 3.2vw, 34px); margin: 0 0 10px; letter-spacing: -.6px; }
+  .section-sub { color: var(--muted); margin: 0; font-size: 15.5px; max-width: 640px; }
+
+  .pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .pillar {
+    position: relative; padding: 26px 22px; border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.012));
+    overflow: hidden; transition: transform .25s var(--ease), border-color .25s var(--ease);
+  }
+  .pillar:hover { transform: translateY(-4px); border-color: rgba(123,217,106,.35); }
+  .pillar::after {
+    content: ""; position: absolute; inset: auto -30% -60% -30%; height: 140px;
+    background: radial-gradient(50% 100% at 50% 0, rgba(69,195,79,.20), transparent 70%);
+    opacity: 0; transition: opacity .3s var(--ease);
+  }
+  .pillar:hover::after { opacity: 1; }
+  .pillar .big {
+    font-size: 30px; font-weight: 750; letter-spacing: -1px; line-height: 1.1;
+    background: linear-gradient(180deg, #fff, #a9b6e8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .pillar .big small { font-size: 14px; font-weight: 600; letter-spacing: 0; color: var(--muted); -webkit-text-fill-color: var(--muted); margin-left: 4px; }
+  .pillar h3 { margin: 12px 0 6px; font-size: 16px; }
+  .pillar p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+
+  /* ---------- 状态 ---------- */
+  .states { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   .state {
-    border: 1px solid var(--line); border-radius: 18px; padding: 18px;
-    background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.012));
+    transition: transform .25s var(--ease);
   }
-  .state img { width: 100%; display: block; }
-  .state h3 { margin: 16px 0 4px; font-size: 16px; }
+  .state:hover { transform: translateY(-3px); }
+  .state img { width: 100%; display: block; border-radius: 12px; }
+  .state h3 { margin: 16px 0 4px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
   .state p { margin: 0; color: var(--muted); font-size: 14px; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
-  .dot.on { background: var(--green); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(69,195,79,.6); }
   .dot.off { background: #9ba0ae; }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
-  .card {
-    border: 1px solid var(--line); border-radius: 16px; padding: 22px;
-    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+  /* ---------- 细节列表 ---------- */
+  .grid2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 42px; align-items: start; }
+  .feature { display: flex; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .feature:first-child { padding-top: 0; }
+  .feature:last-child { border-bottom: 0; }
+  .feature .k {
+    flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    background: rgba(69,195,79,.10); border: 1px solid rgba(69,195,79,.22); color: var(--green-soft);
+    font-size: 17px;
   }
-  .card h3 { margin: 0 0 8px; font-size: 15px; }
-  .card p { margin: 0; color: var(--muted); font-size: 14px; }
-  .num { font-size: 22px; font-weight: 700; color: var(--green-soft); display: block; margin-bottom: 6px; }
+  .feature h3 { margin: 0 0 3px; font-size: 15.5px; }
+  .feature p { margin: 0; color: var(--muted); font-size: 14px; }
 
-  ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
-  ol.steps li {
-    counter-increment: step; position: relative; padding-left: 46px;
-    color: var(--muted); font-size: 15px;
+  .code-card {
+    border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+    background: rgba(8,12,26,.75);
   }
-  ol.steps li::before {
-    content: counter(step); position: absolute; left: 0; top: 0;
-    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
-    border: 1px solid var(--line); color: var(--text); font-size: 13px; font-weight: 600;
+  .code-card .bar {
+    display: flex; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+    font-size: 12px; color: var(--dim);
   }
-  ol.steps strong { color: var(--text); }
-
-  pre {
-    background: #0a0f20; border: 1px solid var(--line); border-radius: 14px;
-    padding: 18px 20px; overflow: auto; font-size: 13px; line-height: 1.7;
+  .code-card .bar i { width: 10px; height: 10px; border-radius: 50%; background: #2c3557; }
+  .code-card pre {
+    margin: 0; padding: 18px 20px; overflow: auto; font-size: 12.5px; line-height: 1.8;
     font-family: "SF Mono", ui-monospace, Menlo, monospace; color: #cfd7f5;
   }
-  code { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .92em; }
-  p code, li code { background: rgba(255,255,255,.07); padding: 2px 6px; border-radius: 6px; }
+  .code-card .k { color: #8fb4ff; }
+  .code-card .s { color: #9ad98a; }
+  .code-card .n { color: #e7c07a; }
 
-  .limits { color: var(--muted); font-size: 15px; padding-left: 20px; }
-  .limits li { margin-bottom: 8px; }
-
-
-  .donate-card {
-    margin-top: 8px; display: inline-block; padding: 18px;
-    background: #fff; border-radius: 20px;
+  /* ---------- 安装 ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+  .step {
+    position: relative; padding: 24px 22px; border-radius: var(--radius); border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.012));
   }
-  .donate-card img { display: block; border-radius: 12px; }
+  .step::before {
+    counter-increment: s; content: counter(s);
+    display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px;
+    border: 1px solid rgba(123,217,106,.35); color: var(--green-soft);
+    font: 700 13px/1 "SF Mono", ui-monospace, monospace; margin-bottom: 14px;
+  }
+  .step h3 { margin: 0 0 6px; font-size: 15.5px; }
+  .step p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* ---------- 支持 ---------- */
+  .donate { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+  .donate img { width: 168px; border-radius: 14px; background: #fff; padding: 8px; }
+  .donate .txt { flex: 1 1 280px; }
+  .donate .txt p { color: var(--muted); margin: 0 0 8px; }
+
+  /* ---------- 下载 ---------- */
+  .cta {
+    text-align: center; border: 1px solid var(--line); border-radius: 28px;
+    padding: 56px 28px; background:
+      radial-gradient(60% 90% at 50% 0, rgba(69,195,79,.14), transparent 70%),
+      linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
+  }
+  .cta h2 { margin-bottom: 8px; }
+  .cta p { color: var(--muted); margin: 0 0 26px; }
 
   footer {
-    border-top: 1px solid var(--line); padding: 30px 0 50px;
-    color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    margin-top: 70px; padding: 30px 0 54px; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: 13px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  footer a { color: var(--muted); }
+
+  /* ---------- 滚动出现 ---------- */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    * { animation: none !important; }
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 900px) {
+    .pillars { grid-template-columns: 1fr 1fr; }
+    .grid2 { grid-template-columns: 1fr; gap: 28px; }
+    .steps { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .nav a:not(.gh) { display: none; }
+    .pillars { grid-template-columns: 1fr; }
     .states { grid-template-columns: 1fr; }
-    .nav { display: none; }
-    section { padding: 48px 0; }
+    section { padding: 60px 0; }
+    .demo { transform: none; padding: 14px 10px; }
+    .demo .hint { font-size: 11px; }
+    .menubar { height: 52px; padding: 0 10px; gap: 6px; }
+    .menubar .menus { display: none; }
+    .menubar .ico { width: 16px; height: 16px; border-radius: 4px; }
+    .menubar .ico::after { width: 6px; height: 6px; }
+    .switch .track { width: 36px; height: 21px; }
+    .switch .knob { width: 17px; height: 17px; margin: 2px; }
+    .switch input:checked + .track .knob { transform: translateX(15px); }
+    .donate { gap: 18px; }
+    .donate img { width: 132px; }
+    .cta { padding: 40px 18px; }
   }
 </style>
 </head>
 <body>
 
 <div class="wrap">
-  <header>
+  <header id="top">
     <div class="brand">
-      <img src="assets/icon.png" alt="BlankTop icon">
+      <img src="assets/icon.png" alt="BlankTop">
       <span>留白 BlankTop</span>
     </div>
     <nav class="nav">
-      <a href="launch.html">为什么</a>
+      <a href="#why">卖点</a>
       <a href="#states">效果</a>
-      <a href="#features">特性</a>
       <a href="#install">安装</a>
-      <a href="#config">配置</a>
-      <a href="#donate">支持</a>
-      <a href="https://github.com/xiaoan223/BlankTop">GitHub</a>
+      <a href="launch.html">为什么这么设计</a>
+      <a class="gh" href="https://github.com/xiaoan223/BlankTop">GitHub</a>
     </nav>
   </header>
 
   <div class="hero">
-    <h1>更优雅的菜单栏开关</h1>
-    <p class="tag">留白是 macOS 27 上的菜单栏折叠工具。一个开关，把不常用的图标收起来，需要时再放出来。</p>
+    <span class="kicker"><i></i>v1.0.2 · for macOS 27</span>
+    <h1>更优雅的<br><span class="grad">菜单栏开关</span></h1>
+    <p class="lede">一个开关，收起菜单栏左边那些不常用的图标。没有设置面板，没有后台进程，也不占你任何注意力。</p>
     <div class="actions">
-      <a class="btn btn-primary" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.1.dmg">下载 .dmg</a>
-      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.1.zip">下载 .zip</a>
-      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop">查看源码</a>
+      <a class="btn btn-primary" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.dmg">下载 .dmg</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.zip">下载 .zip</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop">源码</a>
     </div>
-    <p class="meta">v1.0.2 · macOS 27 · 约 340 KB · MIT 开源 · <a href="launch.html">为什么这么设计 →</a></p>
+    <p class="meta">340 KB · MIT 开源 · <a href="launch.html">为什么这么设计 →</a></p>
 
-    <figure class="shot">
-      <img src="assets/hero.jpg" alt="菜单栏展开与折叠对比">
-      <figcaption class="caption">上：展开状态，开关在右、底板绿色　下：折叠状态，开关在左、左侧图标收起</figcaption>
-    </figure>
+    <div class="demo-wrap">
+      <div class="demo">
+        <div class="menubar">
+          <div class="menus"><span></span><span></span><span></span><span></span></div>
+          <div class="ico left"></div>
+          <div class="ico left r"></div>
+          <div class="ico left t"></div>
+          <div class="ico left d"></div>
+          <div class="ico left r"></div>
+          <label class="switch">
+            <input type="checkbox" aria-label="演示开关" checked>
+            <span class="track"><span class="knob"></span></span>
+          </label>
+          <div class="ico right r"></div>
+          <div class="ico right"></div>
+          <div class="ico right t"></div>
+        </div>
+        <div class="hint">点一下开关试试 —— <b>左边的图标会收起来，右边不动</b></div>
+      </div>
+    </div>
   </div>
 
+  <section id="why">
+    <div class="section-head reveal">
+      <p class="eyebrow">Why it feels right</p>
+      <h2>四个词，就够了</h2>
+      <p class="section-sub">这个工具不打算做功能大全。它只想在菜单栏里安静地待着，需要的时候帮上一下。</p>
+    </div>
+    <div class="pillars">
+      <div class="pillar reveal">
+        <div class="big">1<small>个开关</small></div>
+        <h3>简单</h3>
+        <p>没有规则、没有分组、没有设置面板。拨一下就收起，再拨一下就回来。</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="big">340<small>KB</small></div>
+        <h3>不占空间</h3>
+        <p>没有守护进程、没有网络请求。它只是菜单栏里多出的一个小方块。</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="big">MIT</div>
+        <h3>开源</h3>
+        <p>全部源码与构建脚本公开。它要辅助功能权限，所以你必须能看清它到底做了什么。</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="big">18<small>种图标</small></div>
+        <h3>有趣</h3>
+        <p>开关、眼睛、托盘、月亮、压缩……还有轻音效。一个小工具，也可以不无聊。</p>
+      </div>
+    </div>
+  </section>
+
   <section id="states">
-    <h2>一眼看懂现在的状态</h2>
-    <p class="sub">开关本身就是状态指示，不需要再记住一个箭头方向。</p>
+    <div class="section-head reveal">
+      <p class="eyebrow">Two states</p>
+      <h2>一眼看懂现在的状态</h2>
+      <p class="section-sub">位置是主信号，颜色是辅助。不需要记箭头方向。</p>
+    </div>
     <div class="states">
-      <div class="state">
+      <div class="state reveal">
         <img src="assets/state-expanded.png" alt="展开状态">
         <h3><span class="dot on"></span>展开</h3>
         <p>圆点在右、底板绿色。菜单栏完整，所有图标可见。</p>
       </div>
-      <div class="state">
+      <div class="state reveal">
         <img src="assets/state-collapsed.png" alt="折叠状态">
         <h3><span class="dot off"></span>折叠</h3>
         <p>圆点在左、底板灰色。开关左边的图标全部收起，右边保持可见。</p>
@@ -187,84 +391,113 @@
     </div>
   </section>
 
-  <section id="features">
-    <h2>几个关键取舍</h2>
-    <p class="sub">不追求功能多，只把“收起菜单栏”这一件事做干净。</p>
-    <div class="grid">
-      <div class="card">
-        <span class="num">24 ms</span>
-        <h3>并发扫描</h3>
-        <p>每次折叠都会重新读取所有 App 的图标位置，60+ 个 App 并发查询，热态只需二三十毫秒。</p>
+  <section>
+    <div class="grid2">
+      <div class="reveal">
+        <p class="eyebrow">Details</p>
+        <h2>为了“简单”，做了一堆不简单的事</h2>
+        <p class="section-sub" style="margin-bottom:26px">你看到的只有一个开关，背后是为了让它不打扰你。</p>
+        <div class="feature">
+          <div class="k">⌘</div>
+          <div><h3>用系统的方式决定收哪些</h3><p>按住 ⌘ 拖动图标即可，顺序由 macOS 自己记住，不需要在设置里维护列表。</p></div>
+        </div>
+        <div class="feature">
+          <div class="k">⚡</div>
+          <div><h3>每次折叠都重新扫，只要 20–30 ms</h3><p>不缓存布局，所以你刚拖过的位置马上生效，不会出现“点了没反应”。</p></div>
+        </div>
+        <div class="feature">
+          <div class="k">♪</div>
+          <div><h3>轻音效，可以关</h3><p>折叠一声 `Pop`、展开一声 `Tink`，音量 12%。右键菜单里一键静音。</p></div>
+        </div>
+        <div class="feature">
+          <div class="k">↺</div>
+          <div><h3>失败就放开，绝不乱藏</h3><p>私有接口失效时立刻恢复正常显示，不会留下一堆找不回来的图标。</p></div>
+        </div>
       </div>
-      <div class="card">
-        <span class="num">0</span>
-        <h3>无后台服务</h3>
-        <p>一个 172 KB 的菜单栏进程，没有守护进程、没有网络请求、没有遥测。</p>
-      </div>
-      <div class="card">
-        <span class="num">⌘</span>
-        <h3>用系统的方式排序</h3>
-        <p>按住 ⌘ 拖动图标即可决定收哪些、留哪些，顺序由 macOS 自己记住。</p>
-      </div>
-      <div class="card">
-        <span class="num">MIT</span>
-        <h3>完全开源</h3>
-        <p>Swift + 50 行 ObjC 桥接层，不依赖第三方库，Command Line Tools 即可编译。</p>
+
+      <div class="reveal">
+        <div class="code-card">
+          <div class="bar"><i></i><i></i><i></i><span style="margin-left:8px">config.json</span></div>
+<pre>{
+  <span class="k">"hotkey"</span>: <span class="s">"opt+cmd+h"</span>,
+  <span class="k">"icon"</span>: <span class="s">"toggle"</span>,
+  <span class="k">"expandMode"</span>: <span class="s">"allowlist"</span>,
+  <span class="k">"sound"</span>: <span class="s">"tink"</span>,
+  <span class="k">"soundVolume"</span>: <span class="n">0.12</span>
+}</pre>
+        </div>
+        <p class="section-sub" style="margin-top:16px;font-size:14px">
+          只改三行：快捷键、图标样式、音色。其余都在右键菜单里。
+        </p>
       </div>
     </div>
   </section>
 
   <section id="install">
-    <h2>安装</h2>
-    <p class="sub">必须放在 /Applications，系统的菜单栏白名单只认这个目录。</p>
-    <ol class="steps">
-      <li><strong>下载 dmg</strong>，打开后把 BlankTop 拖进 Applications。</li>
-      <li><strong>首次运行</strong>会请求「辅助功能」权限，在「系统设置 → 隐私与安全性 → 辅助功能」里勾选「留白」。</li>
-      <li><strong>按住 ⌘</strong> 把想隐藏的图标拖到开关左边，点一下开关即可。</li>
-    </ol>
-  </section>
-
-  <section id="config">
-    <h2>配置</h2>
-    <p class="sub"><code>~/Library/Application Support/BlankTop/config.json</code></p>
-<pre>{
-  "hotkey": "opt+cmd+h",
-  "autoCollapseSeconds": 0,
-  "icon": "toggle",
-  "expandMode": "allowlist",
-  "sound": "tink",
-  "soundVolume": 0.12
-}</pre>
-    <p class="sub" style="margin-top:22px">
-      <code>icon</code> 支持 18 种样式（toggle / chevron / dot / eye / tray / moon / compress …），
-      也可以在右键菜单里直接切换；<code>sound</code> 可选 tink / pop / purr / bottle / none。
-    </p>
-  </section>
-
-  <section id="limits">
-    <h2>已知限制</h2>
-    <ul class="limits">
-      <li>系统白名单只对 <code>/Applications</code> 下的 App 生效，包括你想保持可见的第三方 App。</li>
-      <li>隐藏按 App 进行：一个 App 有多个图标时，它们一起隐藏或一起显示。</li>
-      <li>时钟、Wi-Fi、控制中心、电池由系统项 ID 保护，永远可见。</li>
-      <li>依赖 macOS 27 的私有框架，Apple 改动它时这个工具会失效——同类工具都一样。</li>
-    </ul>
-  </section>
-
-
-  <section id="donate">
-    <h2>请作者喝个咖啡</h2>
-    <p class="sub">留白会一直免费开源。如果它帮到了你，欢迎扫码支持一下。</p>
-    <div class="donate-card">
-      <img src="assets/donate.png" alt="赞赏码" width="240">
+    <div class="section-head reveal">
+      <p class="eyebrow">Install</p>
+      <h2>三步，一分钟</h2>
+      <p class="section-sub">必须放在 /Applications —— 系统的菜单栏白名单只认这个目录。</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <h3>拖进 Applications</h3>
+        <p>打开 dmg，把 BlankTop 拖到 Applications 文件夹。</p>
+      </div>
+      <div class="step reveal">
+        <h3>授权辅助功能</h3>
+        <p>首次运行会请求权限，在「隐私与安全性 → 辅助功能」里勾选「留白」。</p>
+      </div>
+      <div class="step reveal">
+        <h3>⌘ 拖几下</h3>
+        <p>把想隐藏的图标拖到开关左边，点一下开关，完成。</p>
+      </div>
     </div>
   </section>
 
+  <section id="donate">
+    <div class="section-head reveal">
+      <p class="eyebrow">Support</p>
+      <h2>请作者喝个咖啡</h2>
+      <p class="section-sub">留白免费开源，没有内购也没有追踪。如果它帮到了你，欢迎扫码支持。</p>
+    </div>
+    <div class="donate reveal">
+      <img src="assets/donate.png" alt="赞赏码">
+      <div class="txt">
+        <p>右键菜单最下面也有这一项：<b>请作者喝个咖啡 ☕</b></p>
+        <p style="color:var(--dim);font-size:13.5px">你也可以直接去 GitHub 点个 Star，同样有用。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta reveal">
+    <h2>下载 1.0.2</h2>
+    <p>macOS 27 · 340 KB · MIT 开源</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.dmg">下载 .dmg</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop/releases/latest/download/BlankTop-1.0.2.zip">下载 .zip</a>
+      <a class="btn btn-ghost" href="https://github.com/xiaoan223/BlankTop">GitHub</a>
+    </div>
+  </div>
+
   <footer>
     <span>© 2026 BlankTop · MIT License</span>
-    <span>私有 API 调用方式来自 <a href="https://github.com/dwarvesf/hidden">Hidden Bar</a>（MIT）</span>
+    <span><a href="launch.html">发布说明</a> · <a href="https://github.com/xiaoan223/BlankTop">源码</a></span>
   </footer>
 </div>
 
+<script>
+  const header = document.getElementById('top');
+  addEventListener('scroll', () => {
+    header.classList.toggle('stuck', scrollY > 8);
+  }, { passive: true });
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    }
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
 </body>
 </html>
