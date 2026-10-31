@@ -200,6 +200,12 @@
   .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(69,195,79,.6); }
   .dot.off { background: #9ba0ae; }
 
+
+  .gallery { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .gallery figure { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: rgba(255,255,255,.03); }
+  .gallery img { width: 100%; display: block; }
+  .gallery figcaption { font-size: 12.5px; color: var(--dim); padding: 10px 14px; border-top: 1px solid var(--line); }
+
   /* ---------- 细节列表 ---------- */
   .grid2 { display: grid; grid-template-columns: 1.05fr .95fr; gap: 42px; align-items: start; }
   .feature { display: flex; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -381,6 +387,25 @@
         <h3><span class="dot off"></span>折叠</h3>
         <p>圆点在左、底板灰色。开关左边的图标全部收起，右边保持可见。</p>
       </div>
+    </div>
+  </section>
+
+
+  <section id="icons">
+    <div class="section-head reveal">
+      <p class="eyebrow">18 styles</p>
+      <h2>18 种图标，每种都有两种状态</h2>
+      <p class="section-sub">右键菜单 →「图标」随时切换，立即生效。下面是全部样式的真实渲染：</p>
+    </div>
+    <div class="gallery reveal">
+      <figure>
+        <img src="assets/icons-on.jpg" alt="展开状态下的 18 种图标样式">
+        <figcaption>展开：圆点在右、底板绿色</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/icons-off.jpg" alt="折叠状态下的 18 种图标样式">
+        <figcaption>折叠：圆点在左、底板灰色</figcaption>
+      </figure>
     </div>
   </section>
 
