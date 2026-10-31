@@ -257,6 +257,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // 只允许一个实例：重复启动会让两个开关互相打架，点击看起来像“没反应”
+        if let id = Bundle.main.bundleIdentifier {
+            let me = ProcessInfo.processInfo.processIdentifier
+            if let other = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+                .first(where: { $0.processIdentifier != me }) {
+                NSLog("BlankTop: 已有实例在运行（pid \(other.processIdentifier)），本次启动退出")
+                other.activate(options: [])
+                NSApp.terminate(nil)
+                return
+            }
+        }
+
         ConfigStore.writeDefaultIfMissing()
         config = ConfigStore.load()
 
@@ -279,10 +291,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil)
 
         if !MenuBarInventory.isAuthorized {
+            // 只弹系统自己的授权提示。自己的说明留到真正要折叠时再出现，
+            // 免得启动时两个窗口叠在一起。
             MenuBarInventory.requestAuthorization()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.explainMissingPermission()
-            }
         }
 
         if !Bundle.main.bundlePath.hasPrefix("/Applications/") {
@@ -327,8 +338,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var pendingToggle = false
+
     private func toggle() {
+        // 正在扫描/切换时不要丢掉这次点击，等当前动作结束再补上
+        if isBusy {
+            pendingToggle = true
+            return
+        }
         if isCollapsed { expand() } else { collapse() }
+    }
+
+    private func runPendingToggleIfNeeded() {
+        guard pendingToggle else { return }
+        pendingToggle = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
+            self?.toggle()
+        }
     }
 
     private func showMenu() {
@@ -520,19 +546,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: 音效
 
+    private var activeSounds: [NSSound] = []
+
+    /// 用独立的实例播放，避免共用缓存实例时 isPlaying 导致偶发没声音。
     private func playSound(collapsing: Bool) {
         guard config.soundName != "none" else { return }
-        let name: String
+        let file: String
         switch config.soundName {
-        case "pop": name = "Pop"
-        case "purr": name = "Purr"
-        case "bottle": name = "Bottle"
-        default: name = collapsing ? "Pop" : "Tink"
+        case "pop": file = "Pop"
+        case "purr": file = "Purr"
+        case "bottle": file = "Bottle"
+        default: file = collapsing ? "Pop" : "Tink"
         }
-        guard let sound = NSSound(named: NSSound.Name(name)) else { return }
+        let url = URL(fileURLWithPath: "/System/Library/Sounds/\(file).aiff")
+        guard let sound = NSSound(contentsOf: url, byReference: true) else {
+            NSLog("BlankTop: 音效文件不可用 \(file)")
+            return
+        }
         sound.volume = Float(config.soundVolume)
-        if sound.isPlaying { sound.stop() }
-        sound.play()
+        NSLog("BlankTop: sound \(file)")
+        activeSounds.append(sound)
+        if activeSounds.count > 4 { activeSounds.removeFirst() }
+
+        if !sound.play() {
+            // 输出设备刚切换、或上一声还没结束时会失败，稍后重试一次
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                _ = sound.play()
+            }
+        }
     }
 
     // MARK: 折叠 / 展开
@@ -543,19 +584,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert("这台 macOS 上找不到可用的隐藏接口（MenuBarClientCore）。\n系统更新后该私有框架可能被改动。")
             return
         }
-        guard MenuBarInventory.isAuthorized else {
-            MenuBarInventory.requestAuthorization()
-            explainMissingPermission()
-            return
-        }
+        guard requestAccessibility() else { return }
 
         // 每次折叠都重新读一遍位置：用户可能刚用 ⌘ 拖动过图标。
         guard let arrowFrame = statusItem.button?.window?.frame else { return }
+        playSound(collapsing: true)
         isBusy = true
         let started = Date()
         MenuBarInventory.snapshot { [weak self] items in
             guard let self else { return }
-            self.isBusy = false
 
             let hidden = Set(items.filter { $0.frame.midX < arrowFrame.midX }.compactMap { $0.bundleIdentifier })
             let all = Set(items.compactMap { $0.bundleIdentifier })
@@ -584,11 +621,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             self.activate(allowed: self.visibleBundles) { [weak self] ok in
-                guard let self, ok else { return }
+                guard let self else { return }
+                self.isBusy = false
+                guard ok else { return }
                 self.isCollapsed = true
                 self.applyIcon()
-                self.playSound(collapsing: true)
                 NSLog("BlankTop: collapsed, hid \(self.hiddenBundles.sorted())")
+                self.runPendingToggleIfNeeded()
             }
         }
     }
@@ -597,10 +636,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoCollapseTimer?.invalidate()
         autoCollapseTimer = nil
 
+        if isCollapsed { playSound(collapsing: false) }
+        isBusy = true
+
         guard config.expandMode == "allowlist", hasScan, assertion != nil else {
-            let wasCollapsed = isCollapsed
             releaseAndMarkExpanded()
-            if wasCollapsed { playSound(collapsing: false) }
             NSLog("BlankTop: expanded (release)")
             return
         }
@@ -610,9 +650,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if hasNewAppsSinceScan() {
             NSLog("BlankTop: 折叠期间有新 App 启动，重排一次白名单")
             releaseAssertion()
+            // 注意：这里不能再判断 !isCollapsed —— 此刻状态还是「折叠中」，
+            // 那样会直接 return，展开永远完不成（点几下都没反应）。
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-                guard let self, !self.isCollapsed else { return }
-                self.finishAllowlistExpand()
+                self?.finishAllowlistExpand()
             }
             return
         }
@@ -625,7 +666,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func releaseAndMarkExpanded() {
         releaseAssertion()
         isCollapsed = false
+        isBusy = false
         applyIcon()
+        runPendingToggleIfNeeded()
     }
 
     private func finishAllowlistExpand() {
@@ -635,10 +678,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             self.isCollapsed = false
+            self.isBusy = false
             self.applyIcon()
-            self.playSound(collapsing: false)
             NSLog("BlankTop: expanded (allowlist)")
             self.scheduleRescan()
+            self.runPendingToggleIfNeeded()
         }
     }
 
@@ -937,18 +981,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: 提示
 
-    private func explainMissingPermission() {
+    /// 请求辅助功能授权，返回是否已授权。
+    ///
+    /// 系统不会在授权变化时通知进程，所以弹窗期间每 0.5 秒轮询一次：
+    /// 用户去系统设置里勾选后，弹窗自动收起并继续，而不是等你关掉它再
+    /// 重新点一次折叠。
+    @discardableResult
+    private func requestAccessibility() -> Bool {
+        if MenuBarInventory.isAuthorized { return true }
+        MenuBarInventory.requestAuthorization()
+
         let alert = NSAlert()
         alert.messageText = "需要「辅助功能」权限"
         alert.informativeText = """
         留白 需要读取其它 App 的菜单栏图标位置，才能判断哪些在箭头左边。
         请在「系统设置 → 隐私与安全性 → 辅助功能」里勾选「留白」。
+
+        如果列表里已经有「留白」，先按「−」删掉再重新勾选：
+        重新编译过的 App 会被系统当成另一个程序，旧的勾选不生效。
         """
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "稍后")
-        if alert.runModal() == .alertFirstButtonReturn {
+        alert.window.level = .floating
+
+        // 模态循环只跑 .modalPanel 模式，定时器必须加进 .common 才会触发。
+        let timer = Timer(timeInterval: 0.5, repeats: true) { timer in
+            guard MenuBarInventory.isAuthorized else { return }
+            timer.invalidate()
+            alert.window.orderOut(nil)
+            NSApp.abortModal()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        let response = alert.runModal()
+        timer.invalidate()
+
+        if MenuBarInventory.isAuthorized { return true }
+        if response == .alertFirstButtonReturn {
             menuOpenAccessibilitySettings()
         }
+        return false
     }
 
     private func alert(_ text: String) {

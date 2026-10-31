@@ -34,8 +34,25 @@ if [ -f assets/donate.png ]; then
   cp assets/donate.png "$APP/Contents/Resources/donate.png"
 fi
 
-echo "==> ad-hoc 签名"
-codesign --force --sign - "$APP"
+echo "==> 签名"
+# 用固定的本地证书签名。ad-hoc 签名（--sign -）会让签名要求变成 cdhash，
+# 每次编译都会换一个身份，系统的辅助功能授权随即失效。
+# 没有证书时退回 ad-hoc，并提示先运行 make-signing-cert.sh。
+SIGN_IDENTITY="${SIGN_IDENTITY:-BlankTop Local}"
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-$HOME/Library/Keychains/BlankTop-Signing.keychain-db}"
+SIGN_KEYCHAIN_PASS="${SIGN_KEYCHAIN_PASS:-blanktop-signing}"
+if [ "$SIGN_IDENTITY" != "-" ] && [ -f "$SIGN_KEYCHAIN" ] && \
+   security find-identity -p codesigning "$SIGN_KEYCHAIN" 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
+  security unlock-keychain -p "$SIGN_KEYCHAIN_PASS" "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true
+  echo "    使用：$SIGN_IDENTITY"
+  codesign --force --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" "$APP"
+else
+  if [ "$SIGN_IDENTITY" != "-" ]; then
+    echo "    警告：没找到签名身份「$SIGN_IDENTITY」，退回 ad-hoc。"
+    echo "    这样每次重新编译，辅助功能授权都会失效。先运行 ./make-signing-cert.sh"
+  fi
+  codesign --force --sign - "$APP"
+fi
 codesign --verify --verbose=2 "$APP"
 
 echo "==> 完成：$APP"
