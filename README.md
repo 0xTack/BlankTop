@@ -31,15 +31,26 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 ## 特性
 
 - **并发扫描**：每次折叠都重新读取所有 App 的图标位置，60+ 个 App 并发查询，热态 20–30 ms
-- **没有后台服务**：一个 172 KB 的菜单栏进程，无守护进程、无网络请求、无遥测
+- **没有后台服务**：一个 320 KB 的菜单栏进程，无守护进程、无网络请求、无遥测
 - **18 种图标样式**：开关、箭头、眼睛、托盘、月亮、压缩……右键菜单里随时切换
+- **三种玩法**：手动开关、无聊盒子（10 秒后小手把拨杆拨回）、抓狂棋子（点三次会跑，第四次才抓得住）
 - **轻音效**：折叠 `Pop`、展开 `Tink`，音量可调，也可完全关闭
 - **全局快捷键**：默认 `⌥⌘H`
 - **无第三方依赖**：纯 Swift + 50 行 ObjC 桥接层，Command Line Tools 即可编译
 
+## 三种模式
+
+右键菜单 → **模式** 切换，选择会写入配置。
+
+| 模式 | 菜单栏 | 点击后 |
+|---|---|---|
+| `manual` 手动 | 原有 18 种图标任选 | 折叠 / 展开，不自动合上 |
+| `box` 无聊盒子 | 盒子 + 拨杆 | 展开并拨到右边，10 秒后一只小手把拨杆拨回、菜单栏合上 |
+| `crazy` 抓狂棋子 | ♞ | 棋子躲三次，第四次抓住后摔倒，再切换一次菜单栏；10 秒没抓住自动收回 |
+
 ## 安装
 
-1. 从 [Releases](https://github.com/xiaoan223/BlankTop/releases/latest) 下载 `BlankTop-1.0.5.dmg`
+1. 从 [Releases](https://github.com/xiaoan223/BlankTop/releases/latest) 下载 `BlankTop-1.1.0.dmg`
 2. 拖进 `/Applications`
 3. 首次运行授权「辅助功能」（系统设置 → 隐私与安全性 → 辅助功能 → 留白）
 4. 按住 `⌘` 把想隐藏的图标拖到开关左边，点开关
@@ -53,8 +64,9 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 ```json
 {
   "hotkey": "opt+cmd+h",
-  "autoCollapseSeconds": 0,
+  "autoCollapseSeconds": 10,
   "icon": "toggle",
+  "mode": "box",
   "expandMode": "allowlist",
   "sound": "tink",
   "soundVolume": 0.12
@@ -64,8 +76,9 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 | 键 | 说明 |
 |---|---|
 | `hotkey` | `opt` / `cmd` / `shift` / `ctrl` 组合，键位支持 a–z、0–9 |
-| `autoCollapseSeconds` | 展开后多少秒自动收回，`0` 表示不自动 |
+| `autoCollapseSeconds` | 无聊盒子模式下展开后多少秒自动收回，默认 `10` |
 | `icon` | `toggle` `chevron` `chevronThin` `triangle` `toLine` `symbol` `eye` `dot` `bar` `sidebar` `tray` `archive` `moon` `stack` `compress` `doubleChevron` `halfCircle` `menubar` |
+| `mode` | `manual` 手动 / `box` 无聊盒子 / `crazy` 抓狂棋子 |
 | `expandMode` | `allowlist` 展开时只改白名单；`release` 释放限制、整条菜单栏重建 |
 | `sound` | `tink`（折叠 Pop、展开 Tink）/ `pop` / `purr` / `bottle` / `none` |
 | `soundVolume` | 0–1，默认 `0.12` |
