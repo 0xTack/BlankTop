@@ -67,10 +67,26 @@ enum IconStyle: String, CaseIterable {
 
 // MARK: - 配置
 
+enum PlayMode: String {
+    case manual
+    case box
+    case crazy
+
+    var label: String {
+        switch self {
+        case .manual: return "手动（现有图标）"
+        case .box: return "无聊盒子（10 秒自动合上）"
+        case .crazy: return "抓狂棋子（点 3 次才抓得住）"
+        }
+    }
+}
+
 struct Config {
     var hotkeyText = "opt+cmd+h"
-    var autoCollapseSeconds: Double = 0
+    var autoCollapseSeconds: Double = 10
     var icon = IconStyle.toggle.rawValue
+    /// "manual"：原来的开关；"box"：无聊盒子；"crazy"：抓狂棋子
+    var mode = PlayMode.box.rawValue
     /// "allowlist"：展开时只改白名单，不释放（交给系统一次过渡）
     /// "release"：展开时直接释放限制，整条菜单栏重建
     var expandMode = "allowlist"
@@ -80,6 +96,10 @@ struct Config {
 
     var hotKey: (keyCode: UInt32, modifiers: UInt32)? {
         ConfigStore.parseHotKey(hotkeyText)
+    }
+
+    var autoDelay: Double {
+        autoCollapseSeconds > 0 ? autoCollapseSeconds : 10
     }
 }
 
@@ -100,6 +120,10 @@ enum ConfigStore {
         if let text = raw["hotkey"] as? String, parseHotKey(text) != nil { config.hotkeyText = text }
         if let seconds = raw["autoCollapseSeconds"] as? Double { config.autoCollapseSeconds = seconds }
         if let icon = raw["icon"] as? String, IconStyle(rawValue: icon) != nil { config.icon = icon }
+        if let mode = raw["mode"] as? String {
+            let migrated = (mode == "auto") ? PlayMode.box.rawValue : mode
+            if PlayMode(rawValue: migrated) != nil { config.mode = migrated }
+        }
         if let mode = raw["expandMode"] as? String, ["allowlist", "release"].contains(mode) { config.expandMode = mode }
         if let sound = raw["sound"] as? String { config.soundName = sound }
         if let volume = raw["soundVolume"] as? Double { config.soundVolume = volume }
@@ -112,6 +136,7 @@ enum ConfigStore {
             "hotkey": config.hotkeyText,
             "autoCollapseSeconds": config.autoCollapseSeconds,
             "icon": config.icon,
+            "mode": config.mode,
             "expandMode": config.expandMode,
             "sound": config.soundName,
             "soundVolume": config.soundVolume
@@ -239,6 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isCollapsed = false
     private var isBusy = false
     private var config = Config()
+    private var playMode: PlayMode { PlayMode(rawValue: config.mode) ?? .manual }
 
     /// 上一次算出的分区，折叠时直接用，避免每次都扫一遍辅助功能。
     private var visibleBundles: [String] = []
@@ -251,7 +277,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
-    private var autoCollapseTimer: Timer?
+    private var autoTimer: Timer?
+    private var boxAnimTimer: Timer?
+    private var leverAngle: CGFloat = -42
+    private var boxHandVisible = false
+    private var isBoxBusy = false
+    private var isAutoClosing = false
+    private var crazyGame: CrazyGame?
+    private var isCrazyGameActive = false
+    private var didFinishLaunch = false
+    private var didShowAccessibilityAlert = false
 
     private let launchAgentPath = ("~/Library/LaunchAgents/com.xa.blanktop.plist" as NSString).expandingTildeInPath
 
@@ -272,6 +307,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ConfigStore.writeDefaultIfMissing()
         config = ConfigStore.load()
+        // 换签名/换二进制后，TCC 里旧记录会“勾着但不生效”，先清掉再让系统重新弹。
+        resetStalePermissionIfNeeded()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -281,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 去掉点击/悬停时系统画在图标后面的那层底板
             button.isBordered = false
         }
+        leverAngle = isCollapsed ? -42 : 42
         applyIcon()
 
         installHotKey()
@@ -291,10 +329,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didLaunchApplicationNotification,
             object: nil)
 
+        // 不在启动时弹系统授权框。用户真正点折叠时再说明一次，
+        // 避免每次启动都“要权限”。
         if !MenuBarInventory.isAuthorized {
-            // 只弹系统自己的授权提示。自己的说明留到真正要折叠时再出现，
-            // 免得启动时两个窗口叠在一起。
-            MenuBarInventory.requestAuthorization()
+            NSLog("BlankTop: 辅助功能权限未生效，等用户操作时再提示")
         }
 
         if !Bundle.main.bundlePath.hasPrefix("/Applications/") {
@@ -318,11 +356,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.showDonate()
             }
         }
+        didFinishLaunch = true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         rescanWorkItem?.cancel()
         launchRefresh?.cancel()
+        autoTimer?.invalidate()
+        boxAnimTimer?.invalidate()
+        crazyGame?.close()
+        crazyGame = nil
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         releaseAssertion()
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
@@ -335,7 +378,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let event = NSApp.currentEvent, event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             showMenu()
         } else {
-            toggle()
+            switch playMode {
+            case .manual:
+                toggle()
+            case .box:
+                boxPrimaryClick()
+            case .crazy:
+                startCrazyGame()
+            }
         }
     }
 
@@ -358,6 +408,235 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: 无聊盒子（自动模式）
+
+    private func boxPrimaryClick() {
+        if isBoxBusy || isAutoClosing { return }
+        // 倒计时中：点盒子不关，只让拨杆抖一下
+        if !isCollapsed, autoTimer != nil {
+            wiggleLever()
+            return
+        }
+        boxToggle()
+    }
+
+    /// 自动模式的切换；热键和菜单也走这里。
+    private func boxToggle() {
+        guard !isBoxBusy, !isAutoClosing, !isBusy else { return }
+        let wasCollapsed = isCollapsed
+        toggle()
+        waitForSettle { [weak self] in
+            guard let self else { return }
+            guard self.isCollapsed != wasCollapsed else {
+                // 失败：如果本来该合上，过一会儿再试
+                if !self.isCollapsed { self.armAutoTimer() }
+                return
+            }
+            if self.isCollapsed {
+                self.cancelAutoTimer()
+                self.animateLever(on: false)
+            } else {
+                self.animateLever(on: true) { self.armAutoTimer() }
+            }
+        }
+    }
+
+    private func waitForSettle(_ completion: @escaping () -> Void,
+                               deadline: Date? = nil) {
+        let end = deadline ?? Date().addingTimeInterval(3)
+        if !isBusy { completion(); return }
+        if Date() >= end { completion(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+            self?.waitForSettle(completion, deadline: end)
+        }
+    }
+
+    private func armAutoTimer() {
+        cancelAutoTimer()
+        let timer = Timer(timeInterval: config.autoDelay, repeats: false) { [weak self] _ in
+            self?.autoTimer = nil
+            self?.autoClose()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        autoTimer = timer
+        NSLog("BlankTop: box auto close in \(config.autoDelay)s")
+    }
+
+    private func cancelAutoTimer() {
+        autoTimer?.invalidate()
+        autoTimer = nil
+    }
+
+    private func autoClose() {
+        guard !isCollapsed, !isAutoClosing else { return }
+        if isBusy || isBoxBusy {
+            armAutoTimer()
+            return
+        }
+        isAutoClosing = true
+        // 小手先按在拨杆上，然后拨回去
+        NSLog("BlankTop: auto close, box hand")
+        boxHandVisible = true
+        applyBoxIcon()
+
+        let wasCollapsed = isCollapsed
+        toggle()
+        waitForSettle { [weak self] in
+            guard let self else { return }
+            guard self.isCollapsed != wasCollapsed else {
+                self.boxHandVisible = false
+                self.applyBoxIcon()
+                self.isAutoClosing = false
+                self.armAutoTimer()
+                return
+            }
+            guard self.isCollapsed else {
+                self.boxHandVisible = false
+                self.applyBoxIcon()
+                self.isAutoClosing = false
+                return
+            }
+            self.animateLever(on: false) { [weak self] in
+                guard let self else { return }
+                self.boxHandVisible = false
+                self.applyBoxIcon()
+                self.isAutoClosing = false
+            }
+        }
+    }
+
+    private func wiggleLever() {
+        guard !isBoxBusy else { return }
+        isBoxBusy = true
+        boxAnimTimer?.invalidate()
+        let base = leverAngle
+        var frame = 0
+        let total = 8
+        let timer = Timer(timeInterval: 0.025, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            frame += 1
+            let wobble = sin(CGFloat(frame) / CGFloat(total) * .pi) * 7
+            self.leverAngle = base + wobble
+            self.applyBoxIcon()
+            if frame >= total {
+                timer.invalidate()
+                self.boxAnimTimer = nil
+                self.leverAngle = base
+                self.isBoxBusy = false
+                self.applyBoxIcon()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        boxAnimTimer = timer
+    }
+
+    private func animateLever(on: Bool, completion: (() -> Void)? = nil) {
+        boxAnimTimer?.invalidate()
+        isBoxBusy = true
+        let start = leverAngle
+        let target: CGFloat = on ? 42 : -42
+        let overshoot: CGFloat = target + (on ? 12 : -12)
+        var frame = 0
+        let total = 12
+        let timer = Timer(timeInterval: 0.028, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            frame += 1
+            let t = min(1, CGFloat(frame) / CGFloat(total))
+            let angle: CGFloat
+            if t < 0.72 {
+                let p = t / 0.72
+                angle = start + (overshoot - start) * p
+            } else {
+                let p = (t - 0.72) / 0.28
+                angle = overshoot + (target - overshoot) * p
+            }
+            self.leverAngle = angle
+            self.applyBoxIcon()
+            if frame >= total {
+                timer.invalidate()
+                self.boxAnimTimer = nil
+                self.leverAngle = target
+                self.isBoxBusy = false
+                self.applyBoxIcon()
+                completion?()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        boxAnimTimer = timer
+    }
+
+    private func handleHotKey() {
+        switch playMode {
+        case .manual:
+            toggle()
+        case .box:
+            // 倒计时中热键仍然可以提前关
+            if !isCollapsed { cancelAutoTimer() }
+            boxToggle()
+        case .crazy:
+            if isCrazyGameActive {
+                finishCrazyGame(toggle: true)
+            } else {
+                toggle()
+            }
+        }
+    }
+
+    // MARK: 抓狂棋子
+
+    private func startCrazyGame() {
+        guard !isCrazyGameActive, crazyGame == nil else { return }
+        guard requestAccessibility() else { return }
+        guard let anchor = statusItem.button?.window?.frame else { return }
+        let center = NSPoint(x: anchor.midX, y: anchor.midY)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) ?? NSScreen.main else { return }
+
+        isCrazyGameActive = true
+        statusItem.isVisible = false
+
+        let game = CrazyGame(anchor: anchor, screen: screen, image: knightImage())
+        game.onCatch = { [weak self] in self?.finishCrazyGame(toggle: true) }
+        game.onCancel = { [weak self] in self?.finishCrazyGame(toggle: false) }
+        game.onSound = { [weak self] name in self?.playCue(name) }
+        game.onMenu = { [weak self] in
+            self?.finishCrazyGame(toggle: false)
+            self?.showMenu()
+        }
+        crazyGame = game
+        game.start()
+        NSLog("BlankTop: crazy game started")
+    }
+
+    private func finishCrazyGame(toggle doToggle: Bool) {
+        guard isCrazyGameActive || crazyGame != nil else { return }
+        crazyGame?.close()
+        crazyGame = nil
+        isCrazyGameActive = false
+        statusItem.isVisible = true
+        applyIcon()
+        if doToggle { toggle() }
+        NSLog("BlankTop: crazy game finished, toggle=\(doToggle)")
+    }
+
+    private func stopCrazyGame() {
+        guard isCrazyGameActive || crazyGame != nil else { return }
+        crazyGame?.close()
+        crazyGame = nil
+        isCrazyGameActive = false
+        statusItem.isVisible = true
+        NSLog("BlankTop: crazy game stopped")
+    }
+
+    private func playCue(_ name: String) {
+        guard config.soundName != "none" else { return }
+        let url = URL(fileURLWithPath: "/System/Library/Sounds/\(name).aiff")
+        guard let sound = NSSound(contentsOf: url, byReference: true) else { return }
+        sound.volume = 0.16
+        activeSounds.append(sound)
+        if activeSounds.count > 4 { activeSounds.removeFirst() }
+        _ = sound.play()
+    }
+
     private func showMenu() {
         let menu = NSMenu()
 
@@ -366,6 +645,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+
+        // 模式
+        let playModeMenu = NSMenu()
+        for mode in [PlayMode.manual, .box, .crazy] {
+            let item = NSMenuItem(title: mode.label,
+                                  action: #selector(menuSetPlayMode(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.representedObject = mode.rawValue
+            item.state = (playMode == mode) ? .on : .off
+            playModeMenu.addItem(item)
+        }
+        let playModeItem = NSMenuItem(title: "模式", action: nil, keyEquivalent: "")
+        playModeItem.submenu = playModeMenu
+        menu.addItem(playModeItem)
 
         // 图标
         let iconMenu = NSMenu()
@@ -379,6 +673,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let iconItem = NSMenuItem(title: "图标", action: nil, keyEquivalent: "")
         iconItem.submenu = iconMenu
+        iconItem.isEnabled = (playMode == .manual)
         menu.addItem(iconItem)
 
         // 展开方式
@@ -441,8 +736,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = nil
     }
 
-    @objc private func menuToggle() { toggle() }
+    @objc private func menuToggle() { handleHotKey() }
     @objc private func menuQuit() { NSApp.terminate(nil) }
+
+    @objc private func menuSetPlayMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = PlayMode(rawValue: raw) else { return }
+        config.mode = raw
+        ConfigStore.save(config)
+        cancelAutoTimer()
+        boxHandVisible = false
+        boxAnimTimer?.invalidate()
+        boxAnimTimer = nil
+        isBoxBusy = false
+        isAutoClosing = false
+        leverAngle = isCollapsed ? -42 : 42
+        if mode != .crazy { stopCrazyGame() }
+        applyIcon()
+        if mode == .box, !isCollapsed, didFinishLaunch {
+            armAutoTimer()
+        }
+    }
 
     @objc private func menuSetIcon(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let style = IconStyle(rawValue: raw) else { return }
@@ -634,9 +948,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func expand() {
-        autoCollapseTimer?.invalidate()
-        autoCollapseTimer = nil
-
         if isCollapsed { playSound(collapsing: false) }
         isBusy = true
 
@@ -793,8 +1104,206 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: 图标
 
+    private func applyBoxIcon() {
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.image = boxImage(leverAngle: leverAngle, hand: boxHandVisible)
+        button.imagePosition = .imageOnly
+    }
+
+    /// 正面盒子 + 拨杆。拨杆角度 -42° = 关，+42° = 开。
+    private func boxImage(leverAngle: CGFloat, hand: Bool) -> NSImage {
+        let logical = NSSize(width: 20, height: 20)
+        let scale: CGFloat = 2
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                   pixelsWide: Int(logical.width * scale),
+                                   pixelsHigh: Int(logical.height * scale),
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                   isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        let context = NSGraphicsContext(bitmapImageRep: rep)!
+        NSGraphicsContext.current = context
+        context.cgContext.scaleBy(x: scale, y: scale)
+
+        let appearance = statusItem.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        appearance.performAsCurrentDrawingAppearance {
+            let line = NSColor.labelColor
+            let on = leverAngle > 0
+            let green = NSColor(srgbRed: 121 / 255, green: 188 / 255, blue: 81 / 255, alpha: 1)
+            let cream = NSColor(srgbRed: 0.96, green: 0.91, blue: 0.82, alpha: 1)
+            let pink = NSColor(srgbRed: 0.91, green: 0.64, blue: 0.62, alpha: 1)
+            let metal = NSColor(srgbRed: 0.79, green: 0.75, blue: 0.69, alpha: 1)
+
+            // 盒体
+            let body = NSBezierPath(roundedRect: NSRect(x: 3.0, y: 2.8, width: 14.0, height: 10.4),
+                                    xRadius: 1.4, yRadius: 1.4)
+            line.setStroke()
+            body.lineWidth = 1.25
+            body.stroke()
+
+            // 盖子缝
+            let lid = NSBezierPath()
+            lid.move(to: NSPoint(x: 3.2, y: 11.9))
+            lid.line(to: NSPoint(x: 16.8, y: 11.9))
+            lid.lineWidth = 1.1
+            lid.stroke()
+
+            // 顶部胶带
+            let tape = NSBezierPath(rect: NSRect(x: 9.2, y: 11.9, width: 1.6, height: 1.2))
+            line.withAlphaComponent(0.55).setStroke()
+            tape.lineWidth = 0.7
+            tape.stroke()
+
+            // 面单
+            let label = NSBezierPath(roundedRect: NSRect(x: 4.2, y: 3.4, width: 3.0, height: 1.8),
+                                     xRadius: 0.3, yRadius: 0.3)
+            line.withAlphaComponent(0.55).setStroke()
+            label.lineWidth = 0.6
+            label.stroke()
+            line.withAlphaComponent(0.35).setStroke()
+            for y in [4.0, 4.5] as [CGFloat] {
+                let l = NSBezierPath()
+                l.move(to: NSPoint(x: 4.6, y: y))
+                l.line(to: NSPoint(x: 6.8, y: y))
+                l.lineWidth = 0.5
+                l.stroke()
+            }
+
+            // 拨杆底座
+            let base = NSBezierPath(roundedRect: NSRect(x: 7.0, y: 4.3, width: 6.0, height: 2.2),
+                                    xRadius: 1.0, yRadius: 1.0)
+            metal.setFill()
+            base.fill()
+            line.setStroke()
+            base.lineWidth = 0.9
+            base.stroke()
+
+            // 指示灯
+            let led = NSBezierPath(ovalIn: NSRect(x: 7.7, y: 4.9, width: 0.8, height: 0.8))
+            (on ? green : line.withAlphaComponent(0.30)).setFill()
+            led.fill()
+
+            // 拨杆
+            let pivot = NSPoint(x: 10.0, y: 5.7)
+            let radians = leverAngle * .pi / 180
+            let length: CGFloat = 4.6
+            let tip = NSPoint(x: pivot.x + sin(radians) * length,
+                              y: pivot.y + cos(radians) * length)
+            let stick = NSBezierPath()
+            stick.move(to: pivot)
+            stick.line(to: tip)
+            line.setStroke()
+            stick.lineWidth = 1.7
+            stick.lineCapStyle = .round
+            stick.stroke()
+            line.setFill()
+            NSBezierPath(ovalIn: NSRect(x: pivot.x - 0.55, y: pivot.y - 0.55,
+                                        width: 1.1, height: 1.1)).fill()
+
+            // 球头
+            let ball = NSBezierPath(ovalIn: NSRect(x: tip.x - 1.35, y: tip.y - 1.35,
+                                                    width: 2.7, height: 2.7))
+            (on ? green : line.withAlphaComponent(0.35)).setFill()
+            ball.fill()
+            line.setStroke()
+            ball.lineWidth = 0.9
+            ball.stroke()
+
+            // 小手
+            if hand {
+                let start = NSPoint(x: 15.8, y: 13.6)
+                let target = NSPoint(x: tip.x + 1.0, y: tip.y + 0.2)
+                let arm = NSBezierPath()
+                arm.move(to: start)
+                arm.curve(to: NSPoint(x: target.x + 1.4, y: target.y + 1.3),
+                          controlPoint1: NSPoint(x: 15.6, y: 12.2),
+                          controlPoint2: NSPoint(x: target.x + 2.6, y: target.y + 3.0))
+                line.setStroke()
+                arm.lineWidth = 1.9
+                arm.lineCapStyle = .round
+                arm.stroke()
+                cream.setStroke()
+                arm.lineWidth = 1.2
+                arm.stroke()
+
+                let paw = NSBezierPath(roundedRect: NSRect(x: target.x - 1.3, y: target.y - 1.1,
+                                                            width: 3.0, height: 2.4),
+                                       xRadius: 1.1, yRadius: 1.1)
+                cream.setFill()
+                paw.fill()
+                line.setStroke()
+                paw.lineWidth = 0.55
+                paw.stroke()
+                pink.setFill()
+                for dx in [-0.75, 0.0, 0.75] as [CGFloat] {
+                    NSBezierPath(ovalIn: NSRect(x: target.x + dx - 0.28, y: target.y + 0.9,
+                                                width: 0.56, height: 0.5)).fill()
+                }
+                NSBezierPath(ovalIn: NSRect(x: target.x - 0.5, y: target.y - 0.35,
+                                            width: 1.0, height: 0.8)).fill()
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        rep.size = logical
+        let image = NSImage(size: logical)
+        image.addRepresentation(rep)
+        image.isTemplate = false
+        return image
+    }
+
+    private func applyCrazyIcon() {
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.image = knightImage()
+        button.imagePosition = .imageOnly
+    }
+
+    private func knightImage() -> NSImage {
+        let logical = NSSize(width: 20, height: 20)
+        let scale: CGFloat = 2
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                   pixelsWide: Int(logical.width * scale),
+                                   pixelsHigh: Int(logical.height * scale),
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                   isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        let context = NSGraphicsContext(bitmapImageRep: rep)!
+        NSGraphicsContext.current = context
+        context.cgContext.scaleBy(x: scale, y: scale)
+
+        let appearance = statusItem.button?.effectiveAppearance ?? NSApp.effectiveAppearance
+        appearance.performAsCurrentDrawingAppearance {
+            let attr = NSAttributedString(string: "♞", attributes: [
+                .font: NSFont.systemFont(ofSize: 21, weight: .semibold),
+                .foregroundColor: NSColor.labelColor
+            ])
+            let s = attr.size()
+            attr.draw(at: NSPoint(x: (20 - s.width) / 2, y: (20 - s.height) / 2))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        rep.size = logical
+        let image = NSImage(size: logical)
+        image.addRepresentation(rep)
+        image.isTemplate = false
+        return image
+    }
+
     private func applyIcon() {
         guard let button = statusItem.button else { return }
+        switch playMode {
+        case .box:
+            applyBoxIcon()
+            return
+        case .crazy:
+            applyCrazyIcon()
+            return
+        case .manual:
+            break
+        }
         let style = IconStyle(rawValue: config.icon) ?? .chevron
 
         // 语义图标：展开时显示「点了会隐藏」，折叠时显示「点了会显示」
@@ -951,7 +1460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                            nil,
                                            &received)
             guard result == noErr, received.id == 1 else { return OSStatus(eventNotHandledErr) }
-            DispatchQueue.main.async { AppDelegate.shared?.toggle() }
+            DispatchQueue.main.async { AppDelegate.shared?.handleHotKey() }
             return noErr
         }
         InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventType, nil, &hotKeyHandler)
@@ -984,14 +1493,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 重新编译后签名会变，系统里那条旧的授权记录看着是勾上的，实际对新程序无效。
     /// 这里在检测到「换了二进制但权限没生效」时清掉旧记录，让系统的授权弹窗能真正起作用。
     private func resetStalePermissionIfNeeded() {
+        guard !MenuBarInventory.isAuthorized else { return }
         guard let executable = Bundle.main.executableURL,
               let data = try? Data(contentsOf: executable) else { return }
         let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
         let key = "binaryHash"
         let stored = UserDefaults.standard.string(forKey: key)
 
-        defer { UserDefaults.standard.set(hash, forKey: key) }
-        guard let stored, stored != hash, !MenuBarInventory.isAuthorized else { return }
+        // 同一个二进制且权限没生效：不要每次启动都重置，否则会一直弹。
+        if let stored, stored == hash { return }
 
         NSLog("BlankTop: 检测到新版本且权限未生效，清除旧的授权记录")
         let process = Process()
@@ -1001,34 +1511,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.standardError = FileHandle.nullDevice
         try? process.run()
         process.waitUntilExit()
+        if process.terminationStatus == 0 {
+            UserDefaults.standard.set(hash, forKey: key)
+        }
     }
 
     // MARK: 提示
 
     /// 请求辅助功能授权，返回是否已授权。
     ///
-    /// 系统不会在授权变化时通知进程，所以弹窗期间每 0.5 秒轮询一次：
-    /// 用户去系统设置里勾选后，弹窗自动收起并继续，而不是等你关掉它再
-    /// 重新点一次折叠。
+    /// 不在启动时弹系统框，也不在每次点击时反复弹。每次启动最多说明一次，
+    /// 之后用户自己去系统设置里勾选；勾选后下一次点击直接通过。
     @discardableResult
     private func requestAccessibility() -> Bool {
         if MenuBarInventory.isAuthorized { return true }
-        MenuBarInventory.requestAuthorization()
+        guard !didShowAccessibilityAlert else { return false }
+        didShowAccessibilityAlert = true
 
         let alert = NSAlert()
         alert.messageText = "需要「辅助功能」权限"
         alert.informativeText = """
         留白 需要读取其它 App 的菜单栏图标位置，才能判断哪些在箭头左边。
-        请在「系统设置 → 隐私与安全性 → 辅助功能」里勾选「留白」。
 
-        如果列表里已经有「留白」，先按「−」删掉再重新勾选：
-        重新编译过的 App 会被系统当成另一个程序，旧的勾选不生效。
+        打开「系统设置 → 隐私与安全性 → 辅助功能」：
+        • 点「+」添加 /Applications/BlankTop.app
+        • 如果列表里已经有旧的「留白」，先按「−」删掉，再添加新的
+
+        添加并勾选后，回来再点一次即可，不需要重启。
         """
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "稍后")
         alert.window.level = .floating
 
-        // 模态循环只跑 .modalPanel 模式，定时器必须加进 .common 才会触发。
+        // 用户如果就在弹窗期间勾选，自动收起。
         let timer = Timer(timeInterval: 0.5, repeats: true) { timer in
             guard MenuBarInventory.isAuthorized else { return }
             timer.invalidate()

@@ -17,7 +17,7 @@ clang -c -fobjc-arc -fmodules -Wall \
 echo "==> 编译 Swift 主体"
 swiftc -O -swift-version 5 \
   -import-objc-header BlankTop-Bridging.h \
-  main.swift build/shim.o \
+  main.swift CrazyGame.swift build/shim.o \
   -framework AppKit -framework ApplicationServices -framework Carbon \
   -o "build/$BIN"
 
