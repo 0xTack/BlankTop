@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/xiaoan223/BlankTop/releases/latest">下载</a> ·
+  <a href="https://github.com/0xTack/BlankTop/releases/latest">下载</a> ·
   <a href="https://xiaoan223.github.io/BlankTop/">官网</a> ·
   <a href="https://xiaoan223.github.io/BlankTop/launch.html">为什么这么设计</a> ·
   <a href="#编译">编译</a> ·
@@ -21,7 +21,7 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 - **展开**：圆点在右、底板绿色，菜单栏完整可见
 - **折叠**：圆点在左、底板灰色，开关左边的图标全部收起，右边保持可见
 
-决定哪些图标被收起的方式和系统一致：按住 `⌘` 拖动图标到开关左边即可，顺序由 macOS 自己记住。
+决定谁被收起的方式和系统一致：**按住 `⌘`，把图标拖到开关左边；左边的全部收起，右边保持可见。想留谁，就把它拖回右边。** 顺序由 macOS 记住，不用维护名单。
 
 <p align="center">
   <img src="docs/assets/state-expanded.png" alt="展开" width="420">
@@ -33,7 +33,7 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 - **并发扫描**：每次折叠都重新读取所有 App 的图标位置，60+ 个 App 并发查询，热态 20–30 ms
 - **没有后台服务**：一个 320 KB 的菜单栏进程，无守护进程、无网络请求、无遥测
 - **18 种图标样式**：开关、箭头、眼睛、托盘、月亮、压缩……右键菜单里随时切换
-- **三种玩法**：手动开关、无聊盒子（10 秒后小手把拨杆拨回）、抓狂棋子（点三次会跑，第四次才抓得住）
+- **三种玩法**：开关、无聊盒子（10 秒后小手把开关按回去）、抓狂模式（点三次会跑，第四次才抓得住）
 - **轻音效**：折叠 `Pop`、展开 `Tink`，音量可调，也可完全关闭
 - **全局快捷键**：默认 `⌥⌘H`
 - **无第三方依赖**：纯 Swift + 50 行 ObjC 桥接层，Command Line Tools 即可编译
@@ -44,16 +44,16 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 
 | 模式 | 菜单栏 | 点击后 |
 |---|---|---|
-| `manual` 手动 | 原有 18 种图标任选 | 折叠 / 展开，不自动合上 |
-| `box` 无聊盒子 | 盒子 + 拨杆 | 展开并拨到右边，10 秒后一只小手把拨杆拨回、菜单栏合上 |
-| `crazy` 抓狂棋子 | ♞ | 棋子躲三次，第四次抓住后摔倒，再切换一次菜单栏；10 秒没抓住自动收回 |
+| `manual` 开关 | 原有的开关图标 | 折叠 / 展开，不自动合上 |
+| `box` 无聊盒子 | 一个开关 | 展开 10 秒后，一只小手从屏幕上方伸下来把开关按回去、菜单栏合上 |
+| `crazy` 抓狂模式 | ♞ | 开关撑宽、把旁边图标挤开，棋子在空出来的地方跳；躲三次，第四次抓住后摔下菜单栏，10 秒没抓住自动收回 |
 
 ## 安装
 
-1. 从 [Releases](https://github.com/xiaoan223/BlankTop/releases/latest) 下载 `BlankTop-1.1.0.dmg`
+1. 从 [Releases](https://github.com/0xTack/BlankTop/releases/latest) 下载 `BlankTop-1.1.0.dmg`
 2. 拖进 `/Applications`
 3. 首次运行授权「辅助功能」（系统设置 → 隐私与安全性 → 辅助功能 → 留白）
-4. 按住 `⌘` 把想隐藏的图标拖到开关左边，点开关
+4. 按住 `⌘` 把图标拖到开关左边，点开关；想留谁，再把它拖回右边
 
 > ⚠️ 必须放在 `/Applications`。系统白名单只对这个目录生效，放在别处时折叠连它自己的开关也会被藏掉。
 
@@ -78,7 +78,7 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 | `hotkey` | `opt` / `cmd` / `shift` / `ctrl` 组合，键位支持 a–z、0–9 |
 | `autoCollapseSeconds` | 无聊盒子模式下展开后多少秒自动收回，默认 `10` |
 | `icon` | `toggle` `chevron` `chevronThin` `triangle` `toLine` `symbol` `eye` `dot` `bar` `sidebar` `tray` `archive` `moon` `stack` `compress` `doubleChevron` `halfCircle` `menubar` |
-| `mode` | `manual` 手动 / `box` 无聊盒子 / `crazy` 抓狂棋子 |
+| `mode` | `manual` 开关 / `box` 无聊盒子 / `crazy` 抓狂模式 |
 | `expandMode` | `allowlist` 展开时只改白名单；`release` 释放限制、整条菜单栏重建 |
 | `sound` | `tink`（折叠 Pop、展开 Tink）/ `pop` / `purr` / `bottle` / `none` |
 | `soundVolume` | 0–1，默认 `0.12` |

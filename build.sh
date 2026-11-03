@@ -17,7 +17,7 @@ clang -c -fobjc-arc -fmodules -Wall \
 echo "==> 编译 Swift 主体"
 swiftc -O -swift-version 5 \
   -import-objc-header BlankTop-Bridging.h \
-  main.swift CrazyGame.swift build/shim.o \
+  main.swift IconStyle.swift BoxCat.swift CustomMode.swift CrazyGame.swift HandPress.swift HandSVG.swift PeekArt.swift build/shim.o \
   -framework AppKit -framework ApplicationServices -framework Carbon \
   -o "build/$BIN"
 
@@ -30,8 +30,33 @@ if [ -f assets/Icon.icns ]; then
 else
   echo "    警告：assets/Icon.icns 不存在，将使用默认图标"
 fi
-if [ -f assets/donate.png ]; then
-  cp assets/donate.png "$APP/Contents/Resources/donate.png"
+if [ -f assets/icon_1024.png ]; then
+  cp assets/icon_1024.png "$APP/Contents/Resources/hand.png"
+fi
+if [ -f assets/hand-open.pdf ]; then
+  cp assets/hand-open.pdf "$APP/Contents/Resources/hand-open.pdf"
+fi
+if [ -f assets/hand-closed.pdf ]; then
+  cp assets/hand-closed.pdf "$APP/Contents/Resources/hand-closed.pdf"
+fi
+if [ -f assets/hand-open.png ]; then
+  cp assets/hand-open.png "$APP/Contents/Resources/hand-open.png"
+fi
+if [ -f assets/hand-closed.png ]; then
+  cp assets/hand-closed.png "$APP/Contents/Resources/hand-closed.png"
+fi
+if [ -f assets/hand-open.svg ]; then
+  cp assets/hand-open.svg "$APP/Contents/Resources/hand-open.svg"
+fi
+if [ -f assets/hand-closed.svg ]; then
+  cp assets/hand-closed.svg "$APP/Contents/Resources/hand-closed.svg"
+fi
+for snd in assets/*.wav; do
+  [ -f "$snd" ] || continue
+  cp "$snd" "$APP/Contents/Resources/$(basename "$snd")"
+done
+if [ -f assets/donation-qr.png ]; then
+  cp assets/donation-qr.png "$APP/Contents/Resources/donation-qr.png"
 fi
 
 echo "==> 签名"

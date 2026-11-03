@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
 	<key>CFBundleDisplayName</key>
-	<string>留白</string>
+	<string>BlankTop</string>
 	<key>CFBundleExecutable</key>
 	<string>BlankTop</string>
 	<key>CFBundleIconFile</key>
@@ -29,7 +29,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>BlankTop 1.0 · 留白</string>
+	<string>BlankTop 1.1</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
