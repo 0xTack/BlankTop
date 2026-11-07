@@ -23,9 +23,10 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 
 决定谁被收起的方式和系统一致：**按住 `⌘`，把图标拖到开关左边；左边的全部收起，右边保持可见。想留谁，就把它拖回右边。** 顺序由 macOS 记住，不用维护名单。
 
+同一个开关，还可以换成别的玩法：
+
 <p align="center">
-  <img src="docs/assets/state-expanded.png" alt="展开" width="420">
-  <img src="docs/assets/state-collapsed.png" alt="折叠" width="420">
+  <img src="docs/assets/modes.jpg" alt="三种模式：不看还看、无聊盒子、抓狂" width="840">
 </p>
 
 ## 特性
