@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://0xtack.github.io/BlankTop/sitemap.xml
