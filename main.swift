@@ -28,6 +28,16 @@ let enStrings: [String: String] = [
     "展开方式": "Expand Method",
     "重新扫描图标位置": "Rescan Icon Positions",
     "音效": "Sound",
+    "震动反馈": "Haptic",
+    "弱": "Light",
+    "中": "Medium",
+    "强": "Strong",
+    "强制自动收起": "Force Auto-Collapse",
+    "5 秒": "5s",
+    "10 秒": "10s",
+    "15 秒": "15s",
+    "30 秒": "30s",
+    "60 秒": "60s",
     "开机自启": "Launch at Login",
     "辅助功能权限…": "Accessibility Permission…",
     "👏  有你真好": "👏  You are the best",
@@ -191,6 +201,8 @@ enum PlayMode: String {
 struct Config {
     var hotkeyText = "opt+cmd+h"
     var autoCollapseSeconds: Double = 10
+    /// 强制自动收起：展开后到点必折叠，>0 时覆盖所有模式原本的收起规则；0 = 关闭
+    var forceAutoClose: Double = 0
     var icon = IconStyle.toggle.rawValue
     /// "manual"：原来的开关；"peek"：不看还看；"box"：无聊盒子；"crazy"：抓狂棋子
     var mode = PlayMode.peek.rawValue
@@ -200,6 +212,10 @@ struct Config {
     /// 折叠/展开时播放的系统音，`none` 表示静音
     var soundName = "tink"
     var soundVolume: Double = 0.12
+    /// 折叠/展开时触发触控板震动反馈（Force Touch 触控板才有感觉）
+    var haptic = true
+    /// 震动强度："weak" / "medium" / "strong"。系统不提供强度参数，用图案和连震次数近似。
+    var hapticStrength = "medium"
     /// "zh" / "en"
     var language = "zh"
     var custom = CustomSettings()
@@ -209,7 +225,8 @@ struct Config {
     }
 
     var autoDelay: Double {
-        autoCollapseSeconds > 0 ? autoCollapseSeconds : 10
+        // 强制自动收起优先：开启后 peek/box 的倒计时也改用它
+        forceAutoClose > 0 ? forceAutoClose : (autoCollapseSeconds > 0 ? autoCollapseSeconds : 10)
     }
 }
 
@@ -229,6 +246,7 @@ enum ConfigStore {
         }
         if let text = raw["hotkey"] as? String, parseHotKey(text) != nil { config.hotkeyText = text }
         if let seconds = raw["autoCollapseSeconds"] as? Double { config.autoCollapseSeconds = seconds }
+        if let seconds = raw["forceAutoClose"] as? Double { config.forceAutoClose = seconds }
         if let icon = raw["icon"] as? String, IconStyle(rawValue: icon) != nil { config.icon = icon }
         if let mode = raw["mode"] as? String {
             let migrated = (mode == "auto") ? PlayMode.box.rawValue : mode
@@ -237,6 +255,10 @@ enum ConfigStore {
         if let mode = raw["expandMode"] as? String, ["allowlist", "release"].contains(mode) { config.expandMode = mode }
         if let sound = raw["sound"] as? String { config.soundName = sound }
         if let volume = raw["soundVolume"] as? Double { config.soundVolume = volume }
+        if let haptic = raw["haptic"] as? Bool { config.haptic = haptic }
+        if let strength = raw["hapticStrength"] as? String, ["weak", "medium", "strong"].contains(strength) {
+            config.hapticStrength = strength
+        }
         if let language = raw["language"] as? String, ["zh", "en"].contains(language) {
             config.language = language
         }
@@ -251,11 +273,14 @@ enum ConfigStore {
         let json: [String: Any] = [
             "hotkey": config.hotkeyText,
             "autoCollapseSeconds": config.autoCollapseSeconds,
+            "forceAutoClose": config.forceAutoClose,
             "icon": config.icon,
             "mode": config.mode,
             "expandMode": config.expandMode,
             "sound": config.soundName,
             "soundVolume": config.soundVolume,
+            "haptic": config.haptic,
+            "hapticStrength": config.hapticStrength,
             "language": config.language,
             "custom": config.custom.json
         ]
@@ -374,6 +399,27 @@ enum MenuBarInventory {
 
 // MARK: - 应用主体
 
+/// 右键菜单：设置类选项选完不收起，点菜单以外的地方才收。
+/// 原理：正常跟踪里点选项会走 performActionForItem(at:) 并结束跟踪、收起菜单；
+/// 这里对设置类动作改成异步执行、不调 super，菜单就保持打开。
+/// 需要选完就收的一次性动作，把 representedObject 标成 "close"。
+final class StayOpenMenu: NSMenu {
+    override func performActionForItem(at index: Int) {
+        guard let item = self.item(at: index) else {
+            super.performActionForItem(at: index)
+            return
+        }
+        if (item.representedObject as? String) == "close" || item.action == nil {
+            super.performActionForItem(at: index)
+            return
+        }
+        DispatchQueue.main.async {
+            guard let action = item.action else { return }
+            NSApp.sendAction(action, to: item.target, from: item)
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     static let label = "com.xa.blanktop"
 
@@ -405,6 +451,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var hintTimer: Timer?
     private var hintPanel: NSPanel?
     private var handPress: HandPress?
+    /// 最近一次亲手点开关的时间：震动只在点开关后短窗口内给，
+    /// 热键、自动收起这些没有鼠标点击的路径不震。
+    private var lastMouseClickTime = Date.distantPast
     private var isAutoClosing = false
     private var crazyGame: CrazyGame?
     private var isCrazyGameActive = false
@@ -523,7 +572,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         startBarAppearanceWatch()
 
         // 启动时如果已经是展开状态，也要开始倒计时；以前只有手动点开后才计时。
-        if (playMode == .peek || playMode == .box), !isCollapsed {
+        // 强制自动收起开启时，任何模式都要倒计时。
+        if ((playMode == .peek || playMode == .box) || config.forceAutoClose > 0), !isCollapsed {
             armAutoTimer()
             btLog("BlankTop: auto timer armed at launch")
         }
@@ -552,6 +602,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         if let event = NSApp.currentEvent, event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             showMenu()
         } else {
+            lastMouseClickTime = Date()   // 记下这次亲手点击，震动以它为准
             switch playMode {
             case .manual:
                 toggle()
@@ -648,6 +699,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard !isCollapsed, !isAutoClosing, handPress == nil else { return }
         if isBusy {
             armAutoTimer()
+            return
+        }
+        // 屏幕外的手是无聊盒子专属动画：其他模式到点直接折，不出手
+        if playMode == .crazy {
+            finishCrazyGame(toggle: true)
+            return
+        }
+        if playMode != .box {
+            toggle()
             return
         }
         guard let anchor = statusItem.button?.window?.frame else { return }
@@ -806,8 +866,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 return
             }
 
-            let game = CrazyGame(area: area, image: self.knightImage())
-            game.onCatch = { [weak self] in self?.finishCrazyGame(toggle: true) }
+            let game = CrazyGame(area: area, image: self.knightImage(explicitDark: self.lastBarDark ?? false))
+            game.onCatch = { [weak self] in
+                // 抓到棋子也是亲手点了一下，折叠时照常震
+                self?.lastMouseClickTime = Date()
+                self?.finishCrazyGame(toggle: true)
+            }
             game.onCancel = { [weak self] in self?.finishCrazyGame(toggle: false) }
             game.onSound = { [weak self] name in self?.playCue(name) }
             game.onMenu = { [weak self] in
@@ -874,24 +938,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func showMenu() {
         cancelModeHint()
-        let menu = NSMenu()
+        let menu = StayOpenMenu()
         menu.delegate = self
 
         let toggleItem = NSMenuItem(title: t(isCollapsed ? "展开" : "折叠"),
                                     action: #selector(menuToggle),
                                     keyEquivalent: "")
         toggleItem.target = self
+        toggleItem.representedObject = "close"   // 一次性动作，选完收起菜单
         menu.addItem(toggleItem)
 
-        // 模式
-        let playModeMenu = NSMenu()
+        // 模式：「开关」和图标二合一 —— 开关本身展开就是一排可选图标
+        let playModeMenu = StayOpenMenu()
         playModeMenu.delegate = self
         for mode in [PlayMode.manual, .peek, .box, .crazy, .custom] {
             let item = NSMenuItem(title: t(mode.label),
-                                  action: #selector(menuSetPlayMode(_:)),
+                                  action: mode == .manual ? nil : #selector(menuSetPlayMode(_:)),
                                   keyEquivalent: "")
             item.target = self
             item.representedObject = mode.rawValue
+            if mode == .manual {
+                let styleMenu = StayOpenMenu()
+                for style in IconStyle.allCases {
+                    let sub = NSMenuItem(title: t(style.label),
+                                         action: #selector(menuSetIcon(_:)),
+                                         keyEquivalent: "")
+                    sub.target = self
+                    sub.representedObject = style.rawValue
+                    sub.state = (playMode == .manual && config.icon == style.rawValue) ? .on : .off
+                    sub.image = IconRenderer.image(style: style, collapsed: false, size: 22)
+                    // macOS 27 默认会隐藏菜单项里的图片，这里显式要求显示。
+                    if #available(macOS 27.0, *) {
+                        sub.preferredImageVisibility = .visible
+                    }
+                    styleMenu.addItem(sub)
+                }
+                item.submenu = styleMenu
+            }
             item.state = (playMode == mode) ? .on : .off
             playModeMenu.addItem(item)
         }
@@ -899,27 +982,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         playModeItem.submenu = playModeMenu
         menu.addItem(playModeItem)
 
-        // 图标
-        let iconMenu = NSMenu()
-        for style in IconStyle.allCases {
-            let item = NSMenuItem(title: t(style.label), action: #selector(menuSetIcon(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = style.rawValue
-            item.state = (config.icon == style.rawValue) ? .on : .off
-            item.image = IconRenderer.image(style: style, collapsed: false, size: 22)
-            // macOS 27 默认会隐藏菜单项里的图片，这里显式要求显示。
-            if #available(macOS 27.0, *) {
-                item.preferredImageVisibility = .visible
-            }
-            iconMenu.addItem(item)
-        }
-        let iconItem = NSMenuItem(title: t("图标"), action: nil, keyEquivalent: "")
-        iconItem.submenu = iconMenu
-        iconItem.isEnabled = (playMode == .manual)
-        menu.addItem(iconItem)
-
         // 展开方式
-        let modeMenu = NSMenu()
+        let modeMenu = StayOpenMenu()
         let modes: [(String, String)] = [
             ("allowlist", "白名单过渡（不重建菜单栏）"),
             ("release", "释放限制（整栏重建）")
@@ -941,12 +1005,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         menu.addItem(.separator())
 
+        // 音效：只有开 / 关一个勾选项
         let soundItem = NSMenuItem(title: t("音效"),
                                    action: #selector(menuToggleSound),
                                    keyEquivalent: "")
         soundItem.target = self
         soundItem.state = (config.soundName == "none") ? .off : .on
         menu.addItem(soundItem)
+
+        // 震动反馈：单选 关闭 / 弱 / 中 / 强；默认开启 + 中。
+        // 系统没有强度参数，弱=轻图案，中=标准，强=连震两下。
+        let hapticMenu = StayOpenMenu()
+        for (value, title) in [(nil, tt("关闭", "Off")), ("weak", t("弱")), ("medium", t("中")), ("strong", t("强"))] {
+            let item = NSMenuItem(title: title, action: #selector(menuSetHaptic(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = value
+            let active: Bool
+            if let value {
+                active = config.haptic && config.hapticStrength == value
+            } else {
+                active = !config.haptic
+            }
+            item.state = active ? .on : .off
+            hapticMenu.addItem(item)
+        }
+        let hapticItem = NSMenuItem(title: t("震动反馈"), action: nil, keyEquivalent: "")
+        hapticItem.state = config.haptic ? .on : .off   // 开启时前面带勾
+        hapticItem.submenu = hapticMenu
+        menu.addItem(hapticItem)
+
+        // 强制自动收起：展开后到点必折叠，覆盖各模式原本的收起规则
+        let forceMenu = StayOpenMenu()
+        for (seconds, title) in [(0.0, tt("关闭", "Off")), (5.0, t("5 秒")), (10.0, t("10 秒")),
+                                 (15.0, t("15 秒")), (30.0, t("30 秒")), (60.0, t("60 秒"))] {
+            let item = NSMenuItem(title: title, action: #selector(menuSetForceAutoClose(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = seconds
+            item.state = (config.forceAutoClose == seconds) ? .on : .off
+            forceMenu.addItem(item)
+        }
+        let forceItem = NSMenuItem(title: t("强制自动收起"), action: nil, keyEquivalent: "")
+        forceItem.state = (config.forceAutoClose > 0) ? .on : .off   // 开启时前面带勾
+        forceItem.submenu = forceMenu
+        menu.addItem(forceItem)
 
         let login = NSMenuItem(title: t("开机自启"),
                                action: #selector(menuToggleLoginItem),
@@ -959,10 +1060,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                     action: #selector(menuOpenAccessibilitySettings),
                                     keyEquivalent: "")
         permission.target = self
+        permission.representedObject = "close"
         menu.addItem(permission)
 
         // 语言
-        let languageMenu = NSMenu()
+        let languageMenu = StayOpenMenu()
         for (value, title) in [("zh", "中文"), ("en", "English")] {
             let item = NSMenuItem(title: title, action: #selector(menuSetLanguage(_:)), keyEquivalent: "")
             item.target = self
@@ -978,6 +1080,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                 action: #selector(menuDonate),
                                 keyEquivalent: "")
         donate.target = self
+        donate.representedObject = "close"
         menu.addItem(donate)
 
         menu.addItem(.separator())
@@ -986,18 +1089,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                                       action: #selector(menuCheckForUpdates),
                                       keyEquivalent: "")
         checkUpdates.target = self
+        checkUpdates.representedObject = "close"
         menu.addItem(checkUpdates)
 
         let openLog = NSMenuItem(title: t("打开日志"),
                                  action: #selector(menuOpenLog),
                                  keyEquivalent: "")
         openLog.target = self
+        openLog.representedObject = "close"
         menu.addItem(openLog)
 
         menu.addItem(.separator())
 
         let quit = NSMenuItem(title: t("退出 BlankTop"), action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
+        quit.representedObject = "close"
         menu.addItem(quit)
 
         statusItem.menu = menu
@@ -1048,17 +1154,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
         let statusFrame = statusItem.button?.window?.frame
 
-        // 紧贴模式子菜单右边缘；右边放不下就翻到主菜单左侧
-        let anchorX = statusFrame?.midX ?? mouse.x
-        var x = anchorX + 290
+        // 说明贴着菜单边框：找到光标所在的菜单窗口，跟在它右边缘后面，
+        // 而不是按开关位置固定偏移——菜单开在哪儿，说明就跟在哪儿。
+        var menuFrame: NSRect?
+        for window in NSApp.windows where window.isVisible {
+            guard window != hintPanel else { continue }
+            // 菜单管理器是控制器窗口不是面板本体，跳过；零尺寸的也跳过
+            if window.className.contains("MenuWindowManager") { continue }
+            if window.frame.width <= 1 || window.frame.height <= 1 { continue }
+            if window.frame.contains(mouse) {
+                menuFrame = window.frame
+                break
+            }
+        }
+        var x: CGFloat
         var y = mouse.y - size.height / 2
-        if let frame = screen?.visibleFrame {
-            if x + size.width > frame.maxX - 8 {
+        let bounds = screen?.visibleFrame ?? NSRect.zero
+        if let menuFrame {
+            if menuFrame.maxX + size.width + 10 < bounds.maxX - 8 {
+                x = menuFrame.maxX + 10          // 右侧放得下：紧贴菜单右边
+            } else {
+                x = menuFrame.minX - size.width - 10  // 放不下：贴到菜单左边
+            }
+        } else {
+            // 兜底：找不到菜单窗口时按开关位置估算（老逻辑）
+            let anchorX = statusFrame?.midX ?? mouse.x
+            x = anchorX + 290
+            if x + size.width > bounds.maxX - 8 {
                 x = anchorX - size.width - 230
             }
-            x = max(frame.minX + 8, x)
-            // 贴着当前选项的高度，放在菜单右侧，不覆盖菜单
-            y = min(frame.maxY - size.height - 8, max(frame.minY + 8, y))
+        }
+        if !bounds.isEmpty {
+            x = max(bounds.minX + 8, x)
+            // 贴着当前选项的高度，不覆盖菜单
+            y = min(bounds.maxY - size.height - 8, max(bounds.minY + 8, y))
         }
 
         let panel = ModeHintPanel(contentRect: NSRect(x: x, y: y, width: size.width, height: size.height),
@@ -1101,7 +1230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         peekCover = (mode == .peek && isCollapsed) ? 1 : 0
         if mode != .crazy { stopCrazyGame() }
         applyIcon()
-        if (mode == .box || mode == .peek), !isCollapsed, didFinishLaunch {
+        if ((mode == .box || mode == .peek) || config.forceAutoClose > 0), !isCollapsed, didFinishLaunch {
             armAutoTimer()
         }
         if mode == .custom {
@@ -1149,6 +1278,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc private func menuSetIcon(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let style = IconStyle(rawValue: raw) else { return }
         config.icon = style.rawValue
+        // 图标和开关模式是一体的：选图标就是切回开关模式
+        if playMode != .manual {
+            config.mode = PlayMode.manual.rawValue
+            cancelModeHint()
+            cancelAutoTimer()
+            cancelHandPress()
+            peekAnimTimer?.invalidate()
+            peekAnimTimer = nil
+            peekCover = 0
+            stopCrazyGame()
+            if config.forceAutoClose > 0, !isCollapsed, didFinishLaunch {
+                armAutoTimer()
+            }
+        }
         ConfigStore.save(config)
         applyIcon()
     }
@@ -1313,6 +1456,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         config.soundName = (config.soundName == "none") ? "tink" : "none"
         ConfigStore.save(config)
         if config.soundName != "none" { playSound(collapsing: false) }
+    }
+
+    @objc private func menuSetHaptic(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? String {
+            config.haptic = true
+            config.hapticStrength = value
+        } else {
+            config.haptic = false
+        }
+        ConfigStore.save(config)
+        if config.haptic { playHaptic(force: true) }   // 切档位当场给一下，手感立即可感
+    }
+
+    @objc private func menuSetForceAutoClose(_ sender: NSMenuItem) {
+        guard let seconds = sender.representedObject as? Double, seconds >= 0 else { return }
+        config.forceAutoClose = seconds
+        ConfigStore.save(config)
+        // 展开状态下立即生效：开启就重新倒计时，关闭就撤掉定时器
+        if !isCollapsed {
+            if seconds > 0 {
+                armAutoTimer()
+            } else {
+                cancelAutoTimer()
+            }
+        }
+        btLog("BlankTop: force auto close -> \(seconds)s")
     }
 
     // MARK: 赞赏
@@ -1807,6 +1976,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private var activeSounds: [NSSound] = []
 
+    /// 触控板震动反馈：Force Touch / Magic Trackpad 有「嗒」的触感，没有触控板时静默忽略。
+    /// 系统不提供强度参数，用「图案 + 连震次数」近似弱/中/强。
+    /// 只有亲手点击开关（force = false）才震；热键、自动收起不震。
+    private func playHaptic(force: Bool = false) {
+        guard config.haptic else { return }
+        if !force, Date().timeIntervalSince(lastMouseClickTime) > 1.0 { return }
+        let performer = NSHapticFeedbackManager.defaultPerformer
+        func pulse(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+            performer.perform(pattern, performanceTime: .now)
+        }
+        switch config.hapticStrength {
+        case "weak":
+            pulse(.alignment)                       // 最轻的一下
+        case "strong":
+            pulse(.levelChange)                     // 标准嗒 + 90ms 后补一下，感觉更沉
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { pulse(.levelChange) }
+        default:
+            pulse(.levelChange)                     // 标准「嗒」
+        }
+    }
+
     /// 用独立的实例播放，避免共用缓存实例时 isPlaying 导致偶发没声音。
     private func playSound(collapsing: Bool) {
         guard config.soundName != "none" else { return }
@@ -1850,6 +2040,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         guard !isBusy, !isCollapsed else { return }
         customTimer?.invalidate()
         customTimer = nil
+        // 手动折叠时清掉残留的自动收起倒计时，避免它晚点误触发
+        cancelAutoTimer()
         guard HBNativeVisibilityIsAvailable() else {
             alert("这台 macOS 上找不到可用的隐藏接口（MenuBarClientCore）。\n系统更新后该私有框架可能被改动。")
             return
@@ -1859,6 +2051,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // 每次折叠都重新读一遍位置：用户可能刚用 ⌘ 拖动过图标。
         guard let arrowFrame = statusItem.button?.window?.frame else { return }
         playSound(collapsing: true)
+        playHaptic()
         isBusy = true
         let started = Date()
         MenuBarInventory.snapshot { [weak self] items in
@@ -1896,14 +2089,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 guard ok else { return }
                 self.isCollapsed = true
                 self.applyIcon()
+                self.verifyCollapseBoundary()
                 btLog("BlankTop: collapsed, hid \(self.hiddenBundles.sorted())")
                 self.runPendingToggleIfNeeded()
             }
         }
     }
 
+    /// 折叠后自检：等 0.15 秒重扫一次，按折叠后的开关位置重新算分区。
+    /// 扫描瞬间图标可能在滑动、新 App 可能刚出现，导致左右误判——
+    /// 发现分区和白名单对不上，就按新结果重新激活，把误藏/漏藏的图标纠正回来。
+    /// 每次折叠只自检一轮，不循环。
+    private func verifyCollapseBoundary() {
+        guard isCollapsed, assertion != nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.isCollapsed, self.assertion != nil, !self.isBusy else { return }
+            guard let arrowFrame = self.statusItem.button?.window?.frame else { return }
+            MenuBarInventory.snapshot { [weak self] items in
+                guard let self, self.isCollapsed, self.assertion != nil, !self.isBusy else { return }
+                let hidden = Set(items.filter { $0.frame.midX < arrowFrame.midX }.compactMap { $0.bundleIdentifier })
+                let all = Set(items.compactMap { $0.bundleIdentifier })
+                let expectedVisible = all.subtracting(hidden)
+                guard expectedVisible != Set(self.visibleBundles) else { return }
+                btLog("BlankTop: 分区自检修正 visible \(self.visibleBundles.count) → \(expectedVisible.count)")
+                self.hiddenBundles = Array(hidden)
+                self.visibleBundles = Array(expectedVisible)
+                self.scannedPIDs = Set(items.map { $0.pid })
+                self.activate(allowed: Array(expectedVisible)) { ok in
+                    if ok { btLog("BlankTop: 分区修正完成") }
+                }
+            }
+        }
+    }
+
     private func expand() {
-        if isCollapsed { playSound(collapsing: false) }
+        if isCollapsed { playSound(collapsing: false); playHaptic() }
         isBusy = true
 
         guard config.expandMode == "allowlist", hasScan, assertion != nil else {
@@ -1936,6 +2156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         isBusy = false
         applyIcon()
         runPendingToggleIfNeeded()
+        armForceAutoTimerIfNeeded()
     }
 
     private func finishAllowlistExpand() {
@@ -1950,7 +2171,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             btLog("BlankTop: expanded (allowlist)")
             self.scheduleRescan()
             self.runPendingToggleIfNeeded()
+            self.armForceAutoTimerIfNeeded()
         }
+    }
+
+    /// 强制自动收起开启时，展开完成就上倒计时；
+    /// peek/box 原本也会 arm，这里重复 arm 无害（armAutoTimer 内部先 cancel）。
+    private func armForceAutoTimerIfNeeded() {
+        guard config.forceAutoClose > 0, !isCollapsed else { return }
+        armAutoTimer()
     }
 
     /// 折叠之后是否有新 App 启动（它们的图标是在限制生效时创建的）。
@@ -2083,6 +2312,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     /// ♞ 字符按墨迹裁出来，缓存一份，和底座拼成棋子。
     private static var knightGlyph: NSImage?
+    private static var tintedKnightGlyphs: [Bool: NSImage] = [:]
+
+    /// 把黑墨稿棋子染成纯色（面板里不做 template 自动上色，需要显式白/黑）
+    private static func tintedKnightGlyph(dark: Bool) -> NSImage? {
+        if let cached = tintedKnightGlyphs[dark] { return cached }
+        guard let glyph = loadKnightGlyph() else { return nil }
+        let img = NSImage(size: glyph.size)
+        img.lockFocus()
+        (dark ? NSColor.white : NSColor.black).setFill()
+        NSRect(origin: .zero, size: glyph.size).fill(using: .copy)
+        glyph.draw(in: NSRect(origin: .zero, size: glyph.size), from: .zero,
+                   operation: .destinationIn, fraction: 1)
+        img.unlockFocus()
+        tintedKnightGlyphs[dark] = img
+        return img
+    }
 
     private static func loadKnightGlyph() -> NSImage? {
         if let knightGlyph { return knightGlyph }
@@ -2122,7 +2367,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return image
     }
 
-    private func knightImage() -> NSImage {
+    /// explicitDark = nil：template 图，跟随状态栏明暗；给 true/false：画成固定白/黑（游戏面板用）
+    private func knightImage(explicitDark: Bool? = nil) -> NSImage {
         let logical = NSSize(width: 20, height: 20)
         let scale: CGFloat = 2
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -2144,14 +2390,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         context.cgContext.translateBy(x: -10, y: -10)
 
         // 棋子底座
-        NSColor.black.setFill()
+        let ink: NSColor = explicitDark == true ? .white : .black
+        ink.setFill()
         NSBezierPath(roundedRect: NSRect(x: 4.7, y: 0.6, width: 10.6, height: 1.9),
                      xRadius: 0.7, yRadius: 0.7).fill()
         NSBezierPath(roundedRect: NSRect(x: 6.3, y: 2.4, width: 7.4, height: 2.0),
                      xRadius: 0.5, yRadius: 0.5).fill()
 
-        // 马头
-        if let glyph = Self.loadKnightGlyph() {
+        // 马头：template 用黑墨稿；显式配色用染好色的
+        let glyph = explicitDark == nil ? Self.loadKnightGlyph() : Self.tintedKnightGlyph(dark: explicitDark == true)
+        if let glyph {
             let h: CGFloat = 11.6
             let w = h * (glyph.size.width / glyph.size.height)
             glyph.draw(in: NSRect(x: 10 - w/2, y: 4.0, width: w, height: h),
@@ -2162,7 +2410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         rep.size = logical
         let image = NSImage(size: logical)
         image.addRepresentation(rep)
-        image.isTemplate = true
+        image.isTemplate = (explicitDark == nil)
         return image
     }
 
@@ -2306,6 +2554,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             self.lastBarDark = dark
             btLog("BlankTop: bar appearance changed dark=\(dark)")
             self.applyIcon()
+            // 抓狂游戏进行中时，面板里的棋子也换成同色
+            self.crazyGame?.updateImage(self.knightImage(explicitDark: dark))
         }
         RunLoop.main.add(timer, forMode: .common)
         barWatchTimer = timer

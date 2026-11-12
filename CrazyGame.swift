@@ -58,6 +58,12 @@ final class PieceView: NSView {
 final class CrazyGame {
     private let panel: ClickPanel
     private let view: PieceView
+
+    /// 菜单栏明暗变化时，把面板里的棋子换成同色
+    func updateImage(_ image: NSImage) {
+        view.image = image
+        view.needsDisplay = true
+    }
     private let area: NSRect
     private let panelSize = NSSize(width: 26, height: 34)
     /// 棋子第一次出现的位置，最后被抓时回到这里落下。

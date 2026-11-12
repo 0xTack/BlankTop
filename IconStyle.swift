@@ -26,6 +26,7 @@ enum IconStyle: String, CaseIterable {
     case halfCircle     // 半圆填充
     case menubar        // 菜单栏图标本身
     case toggle         // 自绘开关
+    case toggleVertical // 竖向开关
 
     var label: String {
         switch self {
@@ -47,6 +48,7 @@ enum IconStyle: String, CaseIterable {
         case .halfCircle: return "半圆"
         case .menubar: return "菜单栏图标"
         case .toggle: return "开关"
+        case .toggleVertical: return "竖向开关"
         }
     }
 
@@ -120,6 +122,16 @@ enum IconRenderer {
             isTemplate = false
             let isDark = dark ?? (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
             drawToggle(in: box, scale: s, on: !collapsed, dark: isDark)
+        case .toggleVertical:
+            // 竖向开关：把横向开关绕中心逆时针转 90° —— 展开时圆点在上，折叠时在下。
+            isTemplate = false
+            let isDark = dark ?? (NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+            context.cgContext.saveGState()
+            context.cgContext.translateBy(x: box.midX, y: box.midY)
+            context.cgContext.rotate(by: .pi / 2)
+            context.cgContext.translateBy(x: -box.midX, y: -box.midY)
+            drawToggle(in: box, scale: s, on: !collapsed, dark: isDark)
+            context.cgContext.restoreGState()
         case .bar:
             drawBar(in: box, scale: s)
         default:

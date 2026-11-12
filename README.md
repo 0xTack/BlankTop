@@ -51,7 +51,7 @@ macOS 27 的菜单栏塞满图标时，你没法只收起来一部分。BlankTop
 
 ## 安装
 
-1. 从 [Releases](https://github.com/0xTack/BlankTop/releases/latest) 下载 `BlankTop-1.1.0.dmg`
+1. 从 [Releases](https://github.com/0xTack/BlankTop/releases/latest) 下载 `BlankTop-1.2.0-arm64.dmg`（Apple 芯片）或 `BlankTop-1.2.0-intel.dmg`（Intel）
 2. 拖进 `/Applications`
 3. 首次运行授权「辅助功能」（系统设置 → 隐私与安全性 → 辅助功能 → 留白）
 4. 按住 `⌘` 把图标拖到开关左边，点开关；想留谁，再把它拖回右边
